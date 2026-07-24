@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chollometro NSE - Asistente de Compras SVK 🇸🇰</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-badge">NSE SVK 🇸🇰</div>
+            <h1 class="app-title">Chollometro NSE</h1>
+            <p class="app-subtitle">Asistente de Compras & Buscador de Proveedores en Eslovaquia</p>
+        </header>
+
+        <!-- Main Search Section -->
+        <main class="search-section">
+            <form id="search-form" class="search-card">
+                <div class="input-group">
+                    <label for="search-input" class="input-label">¿Qué producto o material necesitas?</label>
+                    <div class="input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input 
+                            type="text" 
+                            id="search-input" 
+                            name="query" 
+                            class="search-input" 
+                            placeholder="Escribe un producto, referencia o marca... ej. destornillador VDE, cinta aislante, Soul-home-n"
+                            required
+                            autocomplete="off"
+                        >
+                    </div>
+                </div>
+
+                <div class="filters-row">
+                    <div class="filter-group">
+                        <label for="category-select" class="filter-label">Categoría / Tipo de Proveedor</label>
+                        <select id="category-select" name="category" class="filter-select">
+                            <option value="">Todas las categorías (Catálogo SVK)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" id="search-btn" class="btn-primary">
+                    <span class="btn-text">Buscar Chollo 🔍</span>
+                    <span class="btn-spinner hidden"></span>
+                </button>
+            </form>
+
+            <!-- Status Indicator -->
+            <div id="status-bar" class="status-bar hidden">
+                <div class="status-content">
+                    <span class="pulse-dot"></span>
+                    <span id="status-text">Buscando en catálogos eslovacos...</span>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <section id="results-container" class="results-section">
+                <!-- Direct result cards will be rendered here dynamically -->
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>Chollometro NSE &copy; 2026 | Misión Eslovaquia 🇸🇰</p>
+        </footer>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast hidden">¡Ficha copiada al portapapeles! 📋</div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
