@@ -54,8 +54,8 @@ def load_providers():
 
 load_providers()
 
-def get_gemini_client(user_api_key=None):
-    api_key = user_api_key or os.getenv("GEMINI_API_KEY")
+def get_gemini_client():
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return None
     try:
@@ -83,7 +83,6 @@ def search():
     data = request.get_json() or {}
     query = data.get('query', '').strip()
     category = data.get('category', '').strip()
-    user_api_key = data.get('api_key', '').strip()
 
     if not query:
         return jsonify({"error": "La consulta de búsqueda no puede estar vacía"}), 400
@@ -95,7 +94,7 @@ def search():
     providers_list = filtered_providers.to_dict(orient='records')
     domains_list = [p['WEB'] for p in providers_list if p.get('WEB')]
 
-    client = get_gemini_client(user_api_key)
+    client = get_gemini_client()
     results = []
     source = "gemini"
 
@@ -106,7 +105,7 @@ def search():
             logging.error(f"Error durante la búsqueda con Gemini: {e}")
             results = []
 
-    # Si no hay cliente Gemini configurado o falla, usar el raspador en tiempo real
+    # Si no hay cliente Gemini configurado en el servidor o falla, usar el raspador en tiempo real
     if not results:
         source = "live_scraper"
         results = search_live_products(query, providers_list, max_results=5)
@@ -121,8 +120,8 @@ def search():
 
 def perform_gemini_search(client, query, category, providers_list, domains_list):
     """
-    Utiliza el cliente Google GenAI SDK con Gemini y Google Search Grounding para encontrar productos reales
-    en e-commerce eslovacos con sus datos reales (referencia, precio y URL a ficha).
+    Utiliza el cliente Google GenAI SDK en el servidor con Gemini y Google Search Grounding para encontrar productos reales
+    en e-commerce eslovacos con sus datos reales (referencia, precio y URL a la página del producto).
     """
     providers_text = "\n".join([f"- {p['Proveedor']} ({p['tipo']}): {p['WEB']}" for p in providers_list[:25]])
     

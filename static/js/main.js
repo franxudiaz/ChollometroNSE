@@ -8,38 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsContainer = document.getElementById('results-container');
     const toast = document.getElementById('toast');
 
-    // API Key UI Controls
-    const toggleApiKeyBtn = document.getElementById('toggle-api-key-btn');
-    const apiKeyBox = document.getElementById('api-key-box');
-    const apiKeyInput = document.getElementById('api-key-input');
-    const saveApiKeyBtn = document.getElementById('save-api-key-btn');
-    const apiKeyStatusDot = document.getElementById('api-key-status-dot');
-
-    // Cargar API Key de localStorage si existe
-    let storedApiKey = localStorage.getItem('gemini_api_key') || '';
-    if (storedApiKey) {
-        apiKeyInput.value = storedApiKey;
-        apiKeyStatusDot.className = 'status-dot-on';
-    }
-
-    toggleApiKeyBtn.addEventListener('click', () => {
-        apiKeyBox.classList.toggle('hidden');
-    });
-
-    saveApiKeyBtn.addEventListener('click', () => {
-        storedApiKey = apiKeyInput.value.trim();
-        if (storedApiKey) {
-            localStorage.setItem('gemini_api_key', storedApiKey);
-            apiKeyStatusDot.className = 'status-dot-on';
-            showToast("Gemini API Key guardada ✅");
-        } else {
-            localStorage.removeItem('gemini_api_key');
-            apiKeyStatusDot.className = 'status-dot-off';
-            showToast("API Key eliminada 🗑️");
-        }
-        apiKeyBox.classList.add('hidden');
-    });
-
     // 1. Cargar categorías dinámicas desde el backend
     async function loadCategories() {
         try {
@@ -79,11 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ 
-                    query, 
-                    category,
-                    api_key: storedApiKey
-                })
+                body: JSON.stringify({ query, category })
             });
 
             if (!res.ok) {
@@ -91,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await res.json();
-            renderResults(data.results, query, data.source);
+            renderResults(data.results, query);
 
         } catch (err) {
             console.error("Error realizando la búsqueda:", err);
@@ -108,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLoadingState(isLoading, message = '') {
         if (isLoading) {
             searchBtn.disabled = true;
-            searchBtn.querySelector('.btn-text').textContent = 'Buscando con Gemini...';
+            searchBtn.querySelector('.btn-text').textContent = 'Buscando proveedores eslovacos...';
             statusBar.classList.remove('hidden');
             statusText.textContent = message;
         } else {
@@ -118,8 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 3. Renderizar resultados como tarjetas
-    function renderResults(results, query, source) {
+    // 3. Renderizar resultados como tarjetas idénticas al Gem de Gemini
+    function renderResults(results, query) {
         if (!results || results.length === 0) {
             resultsContainer.innerHTML = `
                 <div class="card-item" style="padding: 24px; text-align: center; color: var(--text-secondary);">
@@ -131,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         results.forEach((item, index) => {
             const card = document.createElement('div');
-            card.className = `card-item ${index === 0 ? 'open' : ''}`; // Desplegar primera tarjeta por defecto
+            card.className = `card-item ${index === 0 ? 'open' : ''}`; // Desplegar primera por defecto
 
             const itemTextFormatted = `📦 Opción ${index + 1}: ${item.nombre_es}
 • Empresa: ${item.proveedor}
@@ -165,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="detail-box">
                             <span class="detail-label">Código / Referencia</span>
-                            <span class="detail-value" style="font-family: monospace; color: var(--accent-cyan);">${escapeHtml(item.referencia)}</span>
+                            <span class="detail-value" style="font-family: monospace; color: var(--accent-cyan); font-weight:700;">${escapeHtml(item.referencia)}</span>
                         </div>
                         <div class="detail-box">
                             <span class="detail-label">Empresa / Proveedor</span>

@@ -15,33 +15,9 @@
     <div class="app-container">
         <!-- Header -->
         <header class="app-header">
-            <div class="header-top">
-                <div class="logo-badge">NSE SVK 🇸🇰</div>
-                <button id="toggle-api-key-btn" class="api-key-toggle-btn" title="Configurar GEMINI_API_KEY">
-                    🔑 Gemini API Key <span id="api-key-status-dot" class="status-dot-off"></span>
-                </button>
-            </div>
-            
+            <div class="logo-badge">NSE SVK 🇸🇰</div>
             <h1 class="app-title">Chollometro NSE</h1>
             <p class="app-subtitle">Asistente de Compras & Buscador de Proveedores en Eslovaquia</p>
-
-            <!-- Config Box (Collapsible) -->
-            <div id="api-key-box" class="api-key-box hidden">
-                <div class="api-key-input-wrapper">
-                    <label for="api-key-input" class="api-key-label">Google Gemini API Key:</label>
-                    <div class="api-key-controls">
-                        <input 
-                            type="password" 
-                            id="api-key-input" 
-                            class="api-key-input" 
-                            placeholder="Pega aquí tu GEMINI_API_KEY de Google AI Studio..."
-                            autocomplete="off"
-                        >
-                        <button id="save-api-key-btn" class="btn-secondary">Guardar</button>
-                    </div>
-                    <small class="api-key-help">Obtén tu clave gratuita en <a href="https://aistudio.google.com/" target="_blank" rel="noopener">aistudio.google.com</a>. También puedes configurarla en tu archivo <code>.env</code>.</small>
-                </div>
-            </div>
         </header>
 
         <!-- Main Search Section -->
