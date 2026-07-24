@@ -8,6 +8,38 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsContainer = document.getElementById('results-container');
     const toast = document.getElementById('toast');
 
+    // API Key UI Controls
+    const toggleApiKeyBtn = document.getElementById('toggle-api-key-btn');
+    const apiKeyBox = document.getElementById('api-key-box');
+    const apiKeyInput = document.getElementById('api-key-input');
+    const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+    const apiKeyStatusDot = document.getElementById('api-key-status-dot');
+
+    // Cargar API Key de localStorage si existe
+    let storedApiKey = localStorage.getItem('gemini_api_key') || '';
+    if (storedApiKey) {
+        apiKeyInput.value = storedApiKey;
+        apiKeyStatusDot.className = 'status-dot-on';
+    }
+
+    toggleApiKeyBtn.addEventListener('click', () => {
+        apiKeyBox.classList.toggle('hidden');
+    });
+
+    saveApiKeyBtn.addEventListener('click', () => {
+        storedApiKey = apiKeyInput.value.trim();
+        if (storedApiKey) {
+            localStorage.setItem('gemini_api_key', storedApiKey);
+            apiKeyStatusDot.className = 'status-dot-on';
+            showToast("Gemini API Key guardada ✅");
+        } else {
+            localStorage.removeItem('gemini_api_key');
+            apiKeyStatusDot.className = 'status-dot-off';
+            showToast("API Key eliminada 🗑️");
+        }
+        apiKeyBox.classList.add('hidden');
+    });
+
     // 1. Cargar categorías dinámicas desde el backend
     async function loadCategories() {
         try {
@@ -38,8 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!query) return;
 
-        // UI en estado de carga
-        setLoadingState(true, `Buscando "${query}" en catálogos eslovacos...`);
+        setLoadingState(true, `Buscando "${query}" en catálogos de proveedores en Eslovaquia...`);
         resultsContainer.innerHTML = '';
 
         try {
@@ -48,7 +79,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ query, category })
+                body: JSON.stringify({ 
+                    query, 
+                    category,
+                    api_key: storedApiKey
+                })
             });
 
             if (!res.ok) {
@@ -56,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await res.json();
-            renderResults(data.results, query);
+            renderResults(data.results, query, data.source);
 
         } catch (err) {
             console.error("Error realizando la búsqueda:", err);
@@ -73,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLoadingState(isLoading, message = '') {
         if (isLoading) {
             searchBtn.disabled = true;
-            searchBtn.querySelector('.btn-text').textContent = 'Buscando...';
+            searchBtn.querySelector('.btn-text').textContent = 'Buscando con Gemini...';
             statusBar.classList.remove('hidden');
             statusText.textContent = message;
         } else {
@@ -83,12 +118,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 3. Renderizar resultados como acordeones interactivos
-    function renderResults(results, query) {
+    // 3. Renderizar resultados como tarjetas
+    function renderResults(results, query, source) {
         if (!results || results.length === 0) {
             resultsContainer.innerHTML = `
                 <div class="card-item" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-                    🔍 No se encontraron coincidencias directas para "${query}". Intenta ajustar el término o seleccionar "Todas las categorías".
+                    🔍 No se encontraron coincidencias directas para "${query}". Intenta con otro término o selecciona "Todas las categorías".
                 </div>
             `;
             return;
@@ -96,19 +131,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         results.forEach((item, index) => {
             const card = document.createElement('div');
-            card.className = `card-item ${index === 0 ? 'open' : ''}`; // Abrir la primera por defecto
+            card.className = `card-item ${index === 0 ? 'open' : ''}`; // Desplegar primera tarjeta por defecto
 
-            const itemTextFormatted = `📌 PROVEEDOR: ${item.proveedor}
-🇪🇸 PRODUCTO: ${item.nombre_es}
-🇸🇰 PRODUCTO (SK): ${item.nombre_sk}
-🔢 REF / CÓDIGO: ${item.referencia}
-💶 PRECIO (IVA inc.): ${item.precio_eur}
-🔗 ENLACE TIENDA: ${item.url}`;
+            const itemTextFormatted = `📦 Opción ${index + 1}: ${item.nombre_es}
+• Empresa: ${item.proveedor}
+• Nombre (ES): ${item.nombre_es}
+• Nombre (SK): ${item.nombre_sk}
+• Código / Referencia: ${item.referencia}
+• Precio (IVA incl.): ${item.precio_eur}
+• Enlace directo: ${item.url}`;
 
             card.innerHTML = `
                 <div class="card-header">
                     <div class="card-header-left">
-                        <span class="provider-badge">🏬 ${escapeHtml(item.proveedor)}</span>
+                        <span class="provider-badge">📦 Opción ${index + 1}: ${escapeHtml(item.proveedor)}</span>
                         <h3 class="product-title-es">${escapeHtml(item.nombre_es)}</h3>
                     </div>
                     <div class="card-header-right">
@@ -120,19 +156,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card-body">
                     <div class="details-grid">
                         <div class="detail-box">
+                            <span class="detail-label">Nombre (ES)</span>
+                            <span class="detail-value">${escapeHtml(item.nombre_es)}</span>
+                        </div>
+                        <div class="detail-box">
                             <span class="detail-label">Nombre en Eslovaco (SK)</span>
                             <span class="detail-value">${escapeHtml(item.nombre_sk)}</span>
                         </div>
                         <div class="detail-box">
-                            <span class="detail-label">Referencia / Código</span>
-                            <span class="detail-value">${escapeHtml(item.referencia)}</span>
+                            <span class="detail-label">Código / Referencia</span>
+                            <span class="detail-value" style="font-family: monospace; color: var(--accent-cyan);">${escapeHtml(item.referencia)}</span>
                         </div>
                         <div class="detail-box">
-                            <span class="detail-label">Proveedor / Empresa</span>
+                            <span class="detail-label">Empresa / Proveedor</span>
                             <span class="detail-value">${escapeHtml(item.proveedor)}</span>
                         </div>
                         <div class="detail-box">
-                            <span class="detail-label">Precio Unitario (IVA inc.)</span>
+                            <span class="detail-label">Precio (IVA incl.)</span>
                             <span class="detail-value" style="color: var(--accent-green); font-weight:700;">${escapeHtml(item.precio_eur)}</span>
                         </div>
                     </div>
@@ -142,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             📋 Copiar Ficha
                         </button>
                         <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="btn-link">
-                            🔗 Ver Producto en Tienda Directa ↗
+                            🔗 Ver Producto Directo ↗
                         </a>
                     </div>
                 </div>
@@ -159,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
             copyBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const textToCopy = copyBtn.getAttribute('data-text');
-                copyToClipboard(textToCopy, copyBtn);
+                copyToClipboard(textToCopy);
             });
 
             resultsContainer.appendChild(card);
@@ -167,7 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 4. Copiar al portapapeles
-    function copyToClipboard(text, btnElement) {
+    function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(() => {
                 showToast("¡Ficha copiada al portapapeles! 📋");

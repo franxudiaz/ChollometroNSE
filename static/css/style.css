@@ -58,6 +58,108 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 12px;
+}
+
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 800px;
+}
+
+.api-key-toggle-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.api-key-toggle-btn:hover {
+    background: #334155;
+    color: var(--text-primary);
+}
+
+.status-dot-off {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #ef4444;
+}
+
+.status-dot-on {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
+}
+
+.api-key-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border-highlight);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    width: 100%;
+    margin-top: 8px;
+    text-align: left;
+    box-shadow: var(--shadow-glow);
+}
+
+.api-key-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 6px;
+}
+
+.api-key-controls {
+    display: flex;
+    gap: 10px;
+}
+
+.api-key-input {
+    flex: 1;
+    padding: 10px 14px;
+    background-color: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.btn-secondary {
+    background: var(--accent-blue);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.api-key-help {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.api-key-help a {
+    color: var(--accent-cyan);
+    text-decoration: none;
 }
 
 .logo-badge {

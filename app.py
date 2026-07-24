@@ -54,8 +54,8 @@ def load_providers():
 
 load_providers()
 
-def get_gemini_client():
-    api_key = os.getenv("GEMINI_API_KEY")
+def get_gemini_client(user_api_key=None):
+    api_key = user_api_key or os.getenv("GEMINI_API_KEY")
     if not api_key:
         return None
     try:
@@ -83,6 +83,7 @@ def search():
     data = request.get_json() or {}
     query = data.get('query', '').strip()
     category = data.get('category', '').strip()
+    user_api_key = data.get('api_key', '').strip()
 
     if not query:
         return jsonify({"error": "La consulta de búsqueda no puede estar vacía"}), 400
@@ -94,7 +95,7 @@ def search():
     providers_list = filtered_providers.to_dict(orient='records')
     domains_list = [p['WEB'] for p in providers_list if p.get('WEB')]
 
-    client = get_gemini_client()
+    client = get_gemini_client(user_api_key)
     results = []
     source = "gemini"
 
@@ -105,7 +106,7 @@ def search():
             logging.error(f"Error durante la búsqueda con Gemini: {e}")
             results = []
 
-    # Si no hay API key o Gemini no devuelve datos, realizar la búsqueda y raspado en tiempo real en los e-commerce del Excel
+    # Si no hay cliente Gemini configurado o falla, usar el raspador en tiempo real
     if not results:
         source = "live_scraper"
         results = search_live_products(query, providers_list, max_results=5)
@@ -120,12 +121,13 @@ def search():
 
 def perform_gemini_search(client, query, category, providers_list, domains_list):
     """
-    Utiliza el cliente Google GenAI SDK con Gemini para buscar y formatear los productos reales.
+    Utiliza el cliente Google GenAI SDK con Gemini y Google Search Grounding para encontrar productos reales
+    en e-commerce eslovacos con sus datos reales (referencia, precio y URL a ficha).
     """
     providers_text = "\n".join([f"- {p['Proveedor']} ({p['tipo']}): {p['WEB']}" for p in providers_list[:25]])
     
     prompt = f"""
-Eres 'Chollometro NSE', un asistente especializado en búsqueda y compras de material industrial, herramientas y suministros en Eslovaquia.
+Eres 'Chollometro NSE', el asistente oficial de compras para la misión en Eslovaquia.
 
 El usuario busca el producto: "{query}"
 Categoría filtrada (si aplica): "{category if category else 'Cualquiera'}"
@@ -134,20 +136,26 @@ Proveedores de confianza disponibles en Eslovaquia (con sus sitios web oficiales
 {providers_text}
 
 INSTRUCCIONES CRÍTICAS:
-1. Traduce la consulta "{query}" al eslovaco para buscar coincidencias exactas en catálogos de tiendas eslovacas.
-2. Encuentra entre 3 y 5 productos REALES existentes en las e-commerce de los proveedores indicados.
-3. REQUISITO OBLIGATORIO DE URL DIRECTA: El campo 'url' DEBE SER LA URL DIRECTA Y EXACTA A LA FICHA DEL PRODUCTO ESPECÍFICO (ej. https://vercajch.sk/produkt/klieste-stipacie/ o https://www.obi.sk/p/123456). NUNCA devuelvas solo la portada o el dominio principal de la tienda.
-4. NO INCLUYAS TEXTO DE PRUEBA FICTICIO como "Opción 1" ni códigos "SVK-1". Devuelve títulos reales.
-5. Devuelve los resultados ESTRICTAMENTE en formato JSON con la siguiente estructura:
+1. Traduce la consulta "{query}" al eslovaco para buscar coincidencias exactas mediante la herramienta Google Search (Google Search Grounding).
+2. Identifica entre 3 y 5 productos REALES existentes actualmente en las tiendas de Eslovaquia indicadas en la lista (ej: OBI obi.sk, VERCAJCH CENTRUM vercajch.sk, NAY nay.sk, AUTOTECHNA autotechna.sk, DECATHLON decathlon.sk, HAGARD-HAL hagard.sk, etc.).
+3. Para cada producto extrae los datos reales de su ficha en la web:
+   - Proveedor: Nombre exacto de la empresa de la lista (ej. OBI, VERCAJCH CENTRUM, AUTOTECHNA)
+   - Nombre (ES): Nombre traducido o limpio en español del producto
+   - Nombre (SK): Nombre completo real del producto en eslovaco tal como figura en la tienda
+   - Referencia / Código: El código, número de artículo o referencia de catálogo REAL extraído de la web del proveedor (ej. OBI-4007875347502, VRC-180-KLI, KNIPEX-0306180). NUNCA inventes o utilices marcadores de posición genéricos.
+   - Precio (€): El precio real unitario con IVA en euros (ej. 5.59 €, 31.99 €)
+   - URL: La URL REAL y DIRECTA a la ficha del producto específico en el sitio web del proveedor (ej. https://www.obi.sk/p/4007875347502 o https://vercajch.sk/produkt/...). La URL debe abrir la página del producto directamente.
+
+Devuelve la respuesta ÚNICAMENTE en formato JSON con la siguiente estructura de lista de objetos:
 
 [
   {{
-    "proveedor": "Nombre del Proveedor (ej. OBI, NAY, Vercajch Centrum)",
-    "nombre_es": "Nombre completo del producto traducido al español",
-    "nombre_sk": "Nombre completo real del producto en eslovaco (según catálogo)",
-    "referencia": "Código, modelo o número de referencia real (o SKU-12345)",
-    "precio_eur": "Precio unitario real con IVA en € (ej. 18.50 €)",
-    "url": "URL directa a la ficha o buscador de este producto específico"
+    "proveedor": "OBI",
+    "nombre_es": "Alicates universales 180 mm",
+    "nombre_sk": "Kombinované kliešte 180 mm",
+    "referencia": "OBI-4007875347502",
+    "precio_eur": "5.59 €",
+    "url": "https://www.obi.sk/p/4007875347502"
   }}
 ]
 
@@ -159,7 +167,8 @@ Responde ÚNICAMENTE con el bloque JSON válido, sin texto explicativo previo ni
             model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
-                tools=[{"google_search": {}}]
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.1
             )
         )
         
