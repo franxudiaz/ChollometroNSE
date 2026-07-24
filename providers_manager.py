@@ -1,7 +1,7 @@
 import os
 import logging
 import pandas as pd
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus, quote, urlparse
 
 STANDARD_CATEGORIES = [
     "🛠️ Ferretería y Herramientas",
@@ -18,6 +18,8 @@ STANDARD_CATEGORIES = [
     "💊 Farmacia y Salud",
     "✉️ Envíos y Correo"
 ]
+
+KEY_KEYWORDS = ["llave", "llaves", "cilindro", "candado", "cerradura", "kľúč", "kľúče", "vložka", "zámok"]
 
 def find_excel_file():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -72,7 +74,9 @@ class ProvidersManager:
 
     def assign_category_group(self, name, tipo):
         t = (tipo + " " + name).lower()
-        if any(x in t for x in ["ferreteria", "herramental", "maquinaria", "tornilleria", "soldadura", "vercajch", "hyriak", "vkp", "valtec"]):
+        if "jales" in name.lower():
+            return "🔑 Llaves y Cilindros (Jales)"
+        elif any(x in t for x in ["ferreteria", "herramental", "maquinaria", "tornilleria", "soldadura", "vercajch", "hyriak", "vkp", "valtec"]):
             return "🛠️ Ferretería y Herramientas"
         elif any(x in t for x in ["electricidad", "sonido", "copper", "hagard"]):
             return "⚡ Electricidad e Iluminación"
@@ -105,7 +109,18 @@ class ProvidersManager:
 
     def filter_providers(self, category_group="", query=""):
         filtered = []
+        q_lower = query.lower().strip()
+        is_key_query = any(k in q_lower for k in KEY_KEYWORDS)
+        
         for p in self.providers:
+            name_lower = p["nombre"].lower()
+            
+            # Regla de JALES: Solo incluir si la búsqueda es de llaves/cilindros o si el usuario busca JALES explícitamente
+            if "jales" in name_lower:
+                if not is_key_query and "jales" not in q_lower:
+                    continue
+
+            # Filtrar por grupo de categoría si está seleccionado
             if category_group and category_group != "Todas las categorías":
                 if category_group.lower() not in p["categoria_grupo"].lower() and category_group.lower() not in p["tipo"].lower():
                     continue
@@ -114,7 +129,7 @@ class ProvidersManager:
 
     def get_provider_search_url(self, web_url, term_sk):
         """
-        Construye la URL de búsqueda exacta y comprobada desde los formularios de cada proveedor.
+        Construye la URL de búsqueda exacta comprobada de cada proveedor.
         """
         if not web_url:
             return "https://www.google.sk"
@@ -123,8 +138,10 @@ class ProvidersManager:
         parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
         domain = parsed.netloc.lower()
         
-        # Tiendas comprobadas con su formulario real de búsqueda
-        if "strojeslovensko.sk" in domain:
+        # Tiendas verificadas 1 por 1 con su patrón exacto en navegador
+        if "valtec.sk" in domain:
+            return f"https://www.valtec.sk/najdene-produkty/{quote(term_sk.strip())}/"
+        elif "strojeslovensko.sk" in domain:
             return f"https://www.strojeslovensko.sk/search?search={term_encoded}&search_in_category="
         elif "armyshopbb.webnode.sk" in domain or "armyshop" in domain:
             return f"https://armyshopbb.webnode.sk/search/?text={term_encoded}&type=4"
@@ -176,8 +193,6 @@ class ProvidersManager:
             return f"http://www.ibv.sk/?s={term_encoded}"
         elif "technikzv.sk" in domain:
             return f"http://technikzv.sk/?s={term_encoded}"
-        elif "valtec.sk" in domain:
-            return f"http://www.valtec.sk/?s={term_encoded}"
         elif "jales.sk" in domain:
             return f"https://jales.sk/?s={term_encoded}"
         elif "gatial.sk" in domain:
