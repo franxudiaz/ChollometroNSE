@@ -113,6 +113,9 @@ class ProvidersManager:
         return filtered
 
     def get_provider_search_url(self, web_url, term_sk):
+        """
+        Construye la URL verificada y exacta del buscador interno del proveedor.
+        """
         if not web_url:
             return "https://www.google.sk"
             
@@ -120,7 +123,9 @@ class ProvidersManager:
         parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
         domain = parsed.netloc.lower()
         
-        if "obi.sk" in domain:
+        if "decathlon.sk" in domain:
+            return f"https://www.decathlon.sk/search/?query={term_encoded}"
+        elif "obi.sk" in domain:
             return f"https://www.obi.sk/search/{term_encoded}/"
         elif "vercajch.sk" in domain:
             return f"https://vercajch.sk/?s={term_encoded}"
@@ -128,12 +133,12 @@ class ProvidersManager:
             return f"https://www.autotechna.sk/?s={term_encoded}"
         elif "nay.sk" in domain:
             return f"https://www.nay.sk/vyhladavanie?q={term_encoded}"
-        elif "decathlon.sk" in domain:
-            return f"https://www.decathlon.sk/search?Ntt={term_encoded}"
         elif "hagard.sk" in domain:
-            return f"https://www.hagard.sk/vyhladavanie?q={term_encoded}"
+            return f"https://www.hagard.sk/?s={term_encoded}"
         elif "copper.sk" in domain:
-            return f"https://www.copper.sk/vyhladavanie?q={term_encoded}"
+            return f"https://www.copper.sk/?s={term_encoded}"
+        elif "outland.sk" in domain:
+            return f"https://www.outland.sk/?s={term_encoded}"
         elif "stavebninydado.sk" in domain:
             return f"https://www.stavebninydado.sk/?s={term_encoded}"
         elif "ikea.com" in domain:

@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 const data = await res.json();
                 if (data.categories && data.categories.length > 0) {
-                    // Limpiar y poblar selector de categorías
                     categorySelect.innerHTML = '<option value="">Todas las categorías (38 Proveedores SVK)</option>';
                     data.categories.forEach(cat => {
                         const opt = document.createElement('option');
@@ -40,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!query) return;
 
-        setLoadingState(true, `Traduciendo "${query}" al eslovaco y generando accesos a las e-commerce...`);
+        setLoadingState(true, `Traduciendo "${query}" al eslovaco y preparando accesos directos...`);
         resultsContainer.innerHTML = '';
 
         try {
@@ -74,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLoadingState(isLoading, message = '') {
         if (isLoading) {
             searchBtn.disabled = true;
-            searchBtn.querySelector('.btn-text').textContent = 'Generando búsquedas...';
+            searchBtn.querySelector('.btn-text').textContent = 'Generando accesos directos...';
             statusBar.classList.remove('hidden');
             statusText.textContent = message;
         } else {
@@ -84,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 3. Renderizar las tarjetas de proveedores y accesos directos
+    // 3. Renderizar tarjetas de proveedores con enlaces directos
     function renderResults(data) {
         const results = data.results;
         const queryEs = data.query_es;
@@ -105,43 +104,23 @@ document.addEventListener('DOMContentLoaded', () => {
             background: rgba(59, 130, 246, 0.15);
             border: 1px solid rgba(59, 130, 246, 0.3);
             border-radius: 12px;
-            padding: 12px 18px;
+            padding: 14px 20px;
             color: #93c5fd;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
         `;
         summaryBadge.innerHTML = `
-            <span>🇪🇸 <strong>"${escapeHtml(queryEs)}"</strong> ➔ 🇸🇰 Traducido a: <strong style="color: #60a5fa;">"${escapeHtml(querySk)}"</strong></span>
-            <span style="font-size: 0.8rem; background: #1e293b; padding: 4px 10px; border-radius: 20px; color: #f8fafc;">${results.length} Tiendas</span>
+            <span>🇪🇸 Búsqueda: <strong>"${escapeHtml(queryEs)}"</strong> ➔ 🇸🇰 Traducido al Eslovaco: <strong style="color: #60a5fa; font-size: 1.05rem;">"${escapeHtml(querySk)}"</strong></span>
+            <span style="font-size: 0.85rem; background: #1e293b; padding: 4px 12px; border-radius: 20px; color: #f8fafc; font-weight: 600;">${results.length} Tiendas Filtradas</span>
         `;
         resultsContainer.appendChild(summaryBadge);
 
         results.forEach((item, index) => {
             const card = document.createElement('div');
-            card.className = `card-item ${index < 3 ? 'open' : ''}`; // Desplegar las primeras 3 por defecto
-
-            let liveProductsHtml = '';
-            if (item.live_products && item.live_products.length > 0) {
-                liveProductsHtml = `
-                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1);">
-                        <span class="detail-label" style="margin-bottom: 8px; display: block;">Coincidencias encontradas en ${escapeHtml(item.proveedor)}:</span>
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            ${item.live_products.map(p => `
-                                <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-input); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;">
-                                    <span style="color: var(--text-primary); max-width: 65%; font-weight: 500;">${escapeHtml(p.title_sk)}</span>
-                                    <div style="display: flex; align-items: center; gap: 10px;">
-                                        <span style="color: var(--accent-green); font-weight: 700;">${escapeHtml(p.price)}</span>
-                                        <a href="${escapeHtml(p.url)}" target="_blank" rel="noopener" style="color: #60a5fa; text-decoration: none; font-weight: 600;">Ver Ficha ↗</a>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
-            }
+            card.className = `card-item ${index < 4 ? 'open' : ''}`;
 
             const itemTextFormatted = `🏬 PROVEEDOR: ${item.proveedor} (${item.tipo})
 🇪🇸 BÚSQUEDA (ES): ${queryEs}
@@ -175,10 +154,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
 
-                    ${liveProductsHtml}
-
                     <div class="actions-row" style="margin-top: 16px;">
-                        <a href="${escapeHtml(item.search_url)}" target="_blank" rel="noopener noreferrer" class="btn-primary" style="flex: 1; text-decoration: none; text-align: center; justify-content: center;">
+                        <a href="${escapeHtml(item.search_url)}" target="_blank" rel="noopener noreferrer" class="btn-primary" style="flex: 1; text-decoration: none; text-align: center; justify-content: center; font-size: 1rem; font-weight: 700; padding: 14px 20px;">
                             🔍 Abrir Búsqueda Directa en ${escapeHtml(item.proveedor)} ↗
                         </a>
                         <button class="btn-copy" data-text="${escapeAttribute(itemTextFormatted)}">
