@@ -3,6 +3,7 @@ import re
 import json
 import logging
 import pandas as pd
+from urllib.parse import quote_plus, urlparse
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
@@ -55,6 +56,55 @@ def load_providers():
 
 load_providers()
 
+def build_direct_search_url(web_url, search_term):
+    """
+    Construye una URL directa al buscador o catálogo específico del proveedor para el producto.
+    """
+    if not web_url:
+        return "https://www.google.sk"
+    
+    term_encoded = quote_plus(search_term.strip())
+    parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
+    domain = parsed.netloc.lower()
+    
+    if "obi.sk" in domain:
+        return f"https://www.obi.sk/search/{term_encoded}/"
+    elif "nay.sk" in domain:
+        return f"https://www.nay.sk/vyhladavanie?q={term_encoded}"
+    elif "decathlon.sk" in domain:
+        return f"https://www.decathlon.sk/search?Ntt={term_encoded}"
+    elif "vercajch.sk" in domain:
+        return f"https://vercajch.sk/vyhladavanie?search_query={term_encoded}"
+    elif "hagard.sk" in domain:
+        return f"https://www.hagard.sk/vyhladavanie?q={term_encoded}"
+    elif "stavebninydado.sk" in domain:
+        return f"https://www.stavebninydado.sk/vyhladavanie?q={term_encoded}"
+    elif "metro.sk" in domain:
+        return f"https://www.metro.sk/vyhladavanie?q={term_encoded}"
+    elif "copper.sk" in domain:
+        return f"https://www.copper.sk/vyhladavanie?q={term_encoded}"
+    elif "ikea.com" in domain:
+        return f"https://www.ikea.com/sk/sk/search/?q={term_encoded}"
+    elif "jysk.sk" in domain:
+        return f"https://jysk.sk/search?query={term_encoded}"
+    elif "benulekaren.sk" in domain:
+        return f"https://www.benulekaren.sk/vyhladavanie?q={term_encoded}"
+    elif "autotechna.sk" in domain:
+        return f"https://www.autotechna.sk/vyhladavanie?q={term_encoded}"
+    elif "xepap.sk" in domain:
+        return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
+    elif "eshop.vkpsteel.com" in domain:
+        return f"https://www.eshop.vkpsteel.com/vyhladavanie?q={term_encoded}"
+    elif "smart.sk" in domain:
+        return f"https://www.smart.sk/vyhladavanie?q={term_encoded}"
+    elif "gufero.sk" in domain:
+        return f"https://www.gufero.sk/search?q={term_encoded}"
+    elif "autopiko.sk" in domain:
+        return f"https://www.autopiko.sk/search?q={term_encoded}"
+    else:
+        clean_domain = domain.replace("www.", "")
+        return f"https://www.google.com/search?q=site:{clean_domain}+{term_encoded}"
+
 def get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -75,7 +125,6 @@ def get_categories():
     if providers_df is None or providers_df.empty:
         return jsonify({"categories": []})
     
-    # Extraer tipos únicos y limpiarlos
     raw_types = providers_df['tipo'].dropna().tolist()
     categories = sorted(list(set([t for t in raw_types if t])))
     return jsonify({"categories": categories})
@@ -89,7 +138,6 @@ def search():
     if not query:
         return jsonify({"error": "La consulta de búsqueda no puede estar vacía"}), 400
 
-    # Filtrar proveedores relevantes del Excel según la categoría o búsqueda
     filtered_providers = providers_df.copy()
     if category and not category.lower().startswith('tod'):
         filtered_providers = filtered_providers[filtered_providers['tipo'].str.contains(category, case=False, na=False)]
@@ -97,7 +145,6 @@ def search():
     providers_list = filtered_providers.to_dict(orient='records')
     domains_list = [p['WEB'] for p in providers_list if p.get('WEB')]
 
-    # Intentar búsqueda mediante Gemini API
     client = get_gemini_client()
     results = []
     source = "gemini"
@@ -109,10 +156,27 @@ def search():
             logging.error(f"Error durante la búsqueda con Gemini: {e}")
             results = []
 
-    # Fallback a búsqueda simulada si no hay API Key o falla Gemini
     if not results:
         source = "fallback"
         results = perform_fallback_search(query, category, providers_list)
+
+    # Post-procesar URLs para asegurar que lleven a la ficha/búsqueda directa del producto y no solo al dominio home
+    for r in results:
+        url = r.get('url', '').strip()
+        search_term = r.get('nombre_sk') or r.get('nombre_es') or query
+        prov_web = ""
+        # Buscar la web del proveedor en la lista
+        for p in providers_list:
+            if p.get('Proveedor', '').lower() in r.get('proveedor', '').lower() or r.get('proveedor', '').lower() in p.get('Proveedor', '').lower():
+                prov_web = p.get('WEB', '')
+                break
+        if not prov_web:
+            prov_web = url
+
+        # Si la URL devuelta es solo la raíz del sitio (ej: https://www.obi.sk), reemplazarla con la URL directa
+        parsed_url = urlparse(url if url.startswith("http") else f"https://{url}")
+        if not parsed_url.path or parsed_url.path == "/" or url.endswith(".sk") or url.endswith(".com") or url.endswith(".sk/"):
+            r['url'] = build_direct_search_url(prov_web or url, search_term)
 
     return jsonify({
         "query": query,
@@ -137,10 +201,11 @@ Categoría filtrada (si aplica): "{category if category else 'Cualquiera'}"
 Proveedores de confianza disponibles en Eslovaquia (con sus sitios web oficiales):
 {providers_text}
 
-INSTRUCCIONES:
+INSTRUCCIONES CRÍTICAS:
 1. Traduce la consulta "{query}" al eslovaco para buscar coincidencias exactas en catálogos de tiendas eslovacas.
-2. Identifica entre 3 y 5 productos reales o altamente representativos que coincidan con la búsqueda dentro de las tiendas locales eslovacas mencionadas (p. ej. OBI, Nay, Decathlon, Vercajch, Hagard-Hal, Stavebniny Dado, Metro, Copper, etc.).
-3. Devuelve los resultados ESTRICTAMENTE en formato JSON con la siguiente estructura de lista de objetos:
+2. Identifica entre 3 y 5 productos reales que coincidan con la búsqueda en las tiendas locales eslovacas.
+3. REQUISITO OBLIGATORIO DE URL DIRECTA: El campo 'url' DEBE SER LA URL DIRECTA DE LA FICHA DEL PRODUCTO ESPECÍFICO en la e-commerce (ej: https://www.obi.sk/skrutkovace-vde/obi-vde-skrutkovac-1000v/p/5123456 o https://www.nay.sk/vyhladavanie?q=skrutkovac). NUNCA devuelvas solo el dominio principal o la portada genérica (como 'https://www.obi.sk').
+4. Devuelve los resultados ESTRICTAMENTE en formato JSON con la siguiente estructura:
 
 [
   {{
@@ -149,20 +214,23 @@ INSTRUCCIONES:
     "nombre_sk": "Nombre completo del producto en eslovaco (según catálogo)",
     "referencia": "Código, modelo o número de referencia (ej. VDE-1000V-01 o N/A)",
     "precio_eur": "Precio unitario estimado con IVA en € (ej. 18.50 €)",
-    "url": "Enlace directo URL a la tienda o al dominio del proveedor (ej. https://www.obi.sk)"
+    "url": "URL directa a la ficha o buscador de este producto específico"
   }}
 ]
 
 Responde ÚNICAMENTE con el bloque JSON válido, sin texto explicativo previo ni posterior.
 """
     try:
+        from google.genai import types
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[{"google_search": {}}]
+            )
         )
         
         text = response.text.strip()
-        # Limpiar etiquetas markdown de bloques de código json si existen
         if text.startswith("```json"):
             text = text[7:]
         if text.startswith("```"):
@@ -181,12 +249,12 @@ Responde ÚNICAMENTE con el bloque JSON válido, sin texto explicativo previo ni
 
 def perform_fallback_search(query, category, providers_list):
     """
-    Genera resultados estructurados de demostración/fallback basados en los proveedores del Excel.
+    Genera resultados estructurados de demostración/fallback basados en los proveedores del Excel,
+    con URLs directas a la búsqueda de dicho producto en el e-commerce del proveedor.
     """
     if not providers_list:
         providers_list = providers_df.to_dict(orient='records') if providers_df is not None else []
     
-    # Seleccionar hasta 4 proveedores acordes
     sample_providers = providers_list[:4] if providers_list else [
         {"Proveedor": "VERCAJCH CENTRUM", "tipo": "Ferretería", "WEB": "http://vercajch.sk/"},
         {"Proveedor": "OBI", "tipo": "Leroy Merlin local", "WEB": "https://www.obi.sk"},
@@ -198,14 +266,18 @@ def perform_fallback_search(query, category, providers_list):
     for idx, p in enumerate(sample_providers, 1):
         prov_name = p.get('Proveedor', 'Proveedor SVK')
         web_url = p.get('WEB', 'https://www.google.sk')
+        nombre_sk = f"{query.capitalize()} profesionálny SK-{idx}00"
+        
+        # Generar enlace directo al producto / catálogo de búsqueda en la tienda del proveedor
+        direct_url = build_direct_search_url(web_url, nombre_sk)
 
         simulated_results.append({
             "proveedor": prov_name,
             "nombre_es": f"{query.title()} (Modelo Profesional SVK-{idx})",
-            "nombre_sk": f"{query.capitalize()} profesionálny SK-{idx}00",
+            "nombre_sk": nombre_sk,
             "referencia": f"SK-REF-{idx}0948",
             "precio_eur": f"{12.50 + (idx * 6.80):.2f} €",
-            "url": web_url if web_url.startswith("http") else f"https://{web_url}"
+            "url": direct_url
         })
 
     return simulated_results
