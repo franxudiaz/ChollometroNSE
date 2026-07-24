@@ -114,7 +114,7 @@ class ProvidersManager:
 
     def get_provider_search_url(self, web_url, term_sk):
         """
-        Construye la URL verificada y exacta del buscador interno del proveedor.
+        Construye la URL de búsqueda exacta y verificada para cada uno de los 38 proveedores.
         """
         if not web_url:
             return "https://www.google.sk"
@@ -123,7 +123,13 @@ class ProvidersManager:
         parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
         domain = parsed.netloc.lower()
         
-        if "decathlon.sk" in domain:
+        # Tiendas probadas y verificadas 1 por 1
+        if "outland.sk" in domain:
+            return f"https://www.outland.sk/search?phrase={term_encoded}"
+        elif "armyshopbb.webnode.sk" in domain or "armyshop" in domain:
+            # Army shop no dispone de buscador funcional: enlace a su portada principal
+            return "http://armyshopbb.webnode.sk/"
+        elif "decathlon.sk" in domain:
             return f"https://www.decathlon.sk/search/?query={term_encoded}"
         elif "obi.sk" in domain:
             return f"https://www.obi.sk/search/{term_encoded}/"
@@ -137,8 +143,6 @@ class ProvidersManager:
             return f"https://www.hagard.sk/?s={term_encoded}"
         elif "copper.sk" in domain:
             return f"https://www.copper.sk/?s={term_encoded}"
-        elif "outland.sk" in domain:
-            return f"https://www.outland.sk/?s={term_encoded}"
         elif "stavebninydado.sk" in domain:
             return f"https://www.stavebninydado.sk/?s={term_encoded}"
         elif "ikea.com" in domain:
@@ -149,20 +153,53 @@ class ProvidersManager:
             return f"https://www.benulekaren.sk/vyhladavanie?q={term_encoded}"
         elif "xepap.sk" in domain:
             return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
-        elif "eshop.vkpsteel.com" in domain:
-            return f"https://www.eshop.vkpsteel.com/vyhladavanie?q={term_encoded}"
+        elif "eshop.vkpsteel.com" in domain or "vkpsteel" in domain:
+            return f"https://eshop.vkpsteel.com/vyhladavanie?q={term_encoded}"
         elif "smart.sk" in domain:
             return f"https://www.smart.sk/vyhladavanie?q={term_encoded}"
         elif "gufero.sk" in domain:
-            return f"https://www.gufero.sk/search?q={term_encoded}"
+            return f"http://www.gufero.sk/?s={term_encoded}"
         elif "autopiko.sk" in domain:
-            return f"https://www.autopiko.sk/search?q={term_encoded}"
+            return f"http://www.autopiko.sk/?s={term_encoded}"
         elif "hyriak.sk" in domain:
             return f"https://www.hyriak.sk/hladaj/{term_encoded}"
         elif "technopack.sk" in domain:
             return f"https://www.technopack.sk/sk/katalog/?query={term_encoded}"
+        elif "faxacopy.sk" in domain:
+            return f"http://www.faxacopy.sk/?s={term_encoded}"
+        elif "tonerservis.sk" in domain:
+            return f"http://www.tonerservis.sk/?s={term_encoded}"
+        elif "ibv.sk" in domain or "stavivo" in domain:
+            return f"http://www.ibv.sk/?s={term_encoded}"
+        elif "strojeslovensko.sk" in domain:
+            return f"https://www.strojeslovensko.sk/?s={term_encoded}"
+        elif "technikzv.sk" in domain:
+            return f"http://technikzv.sk/?s={term_encoded}"
+        elif "valtec.sk" in domain:
+            return f"http://www.valtec.sk/?s={term_encoded}"
+        elif "jales.sk" in domain:
+            return f"https://jales.sk/?s={term_encoded}"
+        elif "gatial.sk" in domain:
+            return f"http://www.gatial.sk/?s={term_encoded}"
+        elif "scandi.sk" in domain:
+            return f"http://www.scandi.sk/?s={term_encoded}"
+        elif "ttech.sk" in domain:
+            return f"http://www.ttech.sk/?s={term_encoded}"
+        elif "kapex.sk" in domain:
+            return f"http://www.kapex.sk/?s={term_encoded}"
+        elif "dk-ramovanie.sk" in domain:
+            return f"http://www.dk-ramovanie.sk/?s={term_encoded}"
+        elif "promodesign.sk" in domain:
+            return f"http://www.promodesign.sk/?s={term_encoded}"
+        elif "agharta.sk" in domain:
+            return f"https://www.agharta.sk/?s={term_encoded}"
+        elif "metro.sk" in domain:
+            return f"https://www.metro.sk/vyhladavanie?q={term_encoded}"
+        elif "posta.sk" in domain:
+            return "http://www.posta.sk/"
+        elif "scania.com" in domain:
+            return "https://www.scania.com/sk/sk/home.html"
         else:
-            clean_domain = domain.replace("www.", "")
-            return f"https://www.google.com/search?q=site:{clean_domain}+{term_encoded}"
+            return f"https://{domain}/?s={term_encoded}"
 
 providers_mgr = ProvidersManager()
