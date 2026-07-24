@@ -13,6 +13,45 @@ load_dotenv()
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# Diccionario de traducción común español -> eslovaco para términos de búsqueda
+TRANSLATION_DICT = {
+    "alicates": "kliešte",
+    "destornillador": "skrutkovač",
+    "carraca": "račňa",
+    "cinta": "páska",
+    "aislante": "izolačná",
+    "llave": "kľúč",
+    "martillo": "kladivo",
+    "taladro": "vŕtačka",
+    "sierra": "píla",
+    "tornillo": "skrutka",
+    "tuerca": "matica",
+    "arandela": "podložka",
+    "cable": "kábel",
+    "batería": "batéria",
+    "disco": "kotúč",
+    "lijadora": "brúska",
+    "soldadura": "zváračka",
+    "herramientas": "náradie",
+    "limpieza": "čistenie",
+    "ropa": "oblečenie",
+    "marcos": "rámy",
+    "papelería": "papiernictvo"
+}
+
+def translate_to_slovak(text):
+    if not text:
+        return ""
+    words = text.lower().split()
+    translated_words = []
+    for w in words:
+        clean_w = re.sub(r'[^\w]', '', w)
+        if clean_w in TRANSLATION_DICT:
+            translated_words.append(TRANSLATION_DICT[clean_w])
+        else:
+            translated_words.append(w)
+    return " ".join(translated_words)
+
 # Configuración de búsqueda del archivo Excel de proveedores
 def find_excel_file():
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,7 +59,6 @@ def find_excel_file():
         os.path.join(base_dir, 'Proveedores SVK V (VERSIÓN 1.1).xlsx'),
         os.path.join(base_dir, 'data', 'Proveedores SVK V (VERSIÓN 1.1).xlsx'),
     ]
-    # Buscar cualquier archivo Excel que contenga 'Proveedores' en la raíz o en data/
     for folder in [base_dir, os.path.join(base_dir, 'data')]:
         if os.path.exists(folder):
             for f in os.listdir(folder):
@@ -56,51 +94,42 @@ def load_providers():
 
 load_providers()
 
-def build_direct_search_url(web_url, search_term):
+def build_direct_search_url(web_url, clean_search_term):
     """
-    Construye una URL directa al buscador o catálogo específico del proveedor para el producto.
+    Construye una URL directa válida al buscador del e-commerce del proveedor.
     """
     if not web_url:
         return "https://www.google.sk"
     
-    term_encoded = quote_plus(search_term.strip())
+    # Limpiar cualquier texto o sufijo de prueba
+    clean_term = re.sub(r'Modelo\s+Profesional.*', '', clean_search_term, flags=re.IGNORECASE)
+    clean_term = re.sub(r'Opción\s+\d+.*', '', clean_term, flags=re.IGNORECASE)
+    clean_term = re.sub(r'SK-\d+.*', '', clean_term, flags=re.IGNORECASE)
+    clean_term = clean_term.strip()
+
+    # Traducir los términos limpios al eslovaco
+    slovak_term = translate_to_slovak(clean_term)
+    term_encoded = quote_plus(slovak_term)
+    
     parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
     domain = parsed.netloc.lower()
     
-    if "obi.sk" in domain:
+    if "autotechna.sk" in domain:
+        return f"https://www.autotechna.sk/?s={term_encoded}"
+    elif "vercajch.sk" in domain:
+        return f"https://vercajch.sk/?s={term_encoded}"
+    elif "obi.sk" in domain:
         return f"https://www.obi.sk/search/{term_encoded}/"
     elif "nay.sk" in domain:
         return f"https://www.nay.sk/vyhladavanie?q={term_encoded}"
     elif "decathlon.sk" in domain:
         return f"https://www.decathlon.sk/search?Ntt={term_encoded}"
-    elif "vercajch.sk" in domain:
-        return f"https://vercajch.sk/vyhladavanie?search_query={term_encoded}"
-    elif "hagard.sk" in domain:
-        return f"https://www.hagard.sk/vyhladavanie?q={term_encoded}"
-    elif "stavebninydado.sk" in domain:
-        return f"https://www.stavebninydado.sk/vyhladavanie?q={term_encoded}"
-    elif "metro.sk" in domain:
-        return f"https://www.metro.sk/vyhladavanie?q={term_encoded}"
-    elif "copper.sk" in domain:
-        return f"https://www.copper.sk/vyhladavanie?q={term_encoded}"
     elif "ikea.com" in domain:
         return f"https://www.ikea.com/sk/sk/search/?q={term_encoded}"
     elif "jysk.sk" in domain:
         return f"https://jysk.sk/search?query={term_encoded}"
     elif "benulekaren.sk" in domain:
         return f"https://www.benulekaren.sk/vyhladavanie?q={term_encoded}"
-    elif "autotechna.sk" in domain:
-        return f"https://www.autotechna.sk/vyhladavanie?q={term_encoded}"
-    elif "xepap.sk" in domain:
-        return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
-    elif "eshop.vkpsteel.com" in domain:
-        return f"https://www.eshop.vkpsteel.com/vyhladavanie?q={term_encoded}"
-    elif "smart.sk" in domain:
-        return f"https://www.smart.sk/vyhladavanie?q={term_encoded}"
-    elif "gufero.sk" in domain:
-        return f"https://www.gufero.sk/search?q={term_encoded}"
-    elif "autopiko.sk" in domain:
-        return f"https://www.autopiko.sk/search?q={term_encoded}"
     else:
         clean_domain = domain.replace("www.", "")
         return f"https://www.google.com/search?q=site:{clean_domain}+{term_encoded}"
@@ -160,12 +189,10 @@ def search():
         source = "fallback"
         results = perform_fallback_search(query, category, providers_list)
 
-    # Post-procesar URLs para asegurar que lleven a la ficha/búsqueda directa del producto y no solo al dominio home
+    # Post-procesar para asegurar URLs limpias y operativas a la tienda
     for r in results:
         url = r.get('url', '').strip()
-        search_term = r.get('nombre_sk') or r.get('nombre_es') or query
         prov_web = ""
-        # Buscar la web del proveedor en la lista
         for p in providers_list:
             if p.get('Proveedor', '').lower() in r.get('proveedor', '').lower() or r.get('proveedor', '').lower() in p.get('Proveedor', '').lower():
                 prov_web = p.get('WEB', '')
@@ -173,10 +200,9 @@ def search():
         if not prov_web:
             prov_web = url
 
-        # Si la URL devuelta es solo la raíz del sitio (ej: https://www.obi.sk), reemplazarla con la URL directa
         parsed_url = urlparse(url if url.startswith("http") else f"https://{url}")
         if not parsed_url.path or parsed_url.path == "/" or url.endswith(".sk") or url.endswith(".com") or url.endswith(".sk/"):
-            r['url'] = build_direct_search_url(prov_web or url, search_term)
+            r['url'] = build_direct_search_url(prov_web or url, query)
 
     return jsonify({
         "query": query,
@@ -204,7 +230,7 @@ Proveedores de confianza disponibles en Eslovaquia (con sus sitios web oficiales
 INSTRUCCIONES CRÍTICAS:
 1. Traduce la consulta "{query}" al eslovaco para buscar coincidencias exactas en catálogos de tiendas eslovacas.
 2. Identifica entre 3 y 5 productos reales que coincidan con la búsqueda en las tiendas locales eslovacas.
-3. REQUISITO OBLIGATORIO DE URL DIRECTA: El campo 'url' DEBE SER LA URL DIRECTA DE LA FICHA DEL PRODUCTO ESPECÍFICO en la e-commerce (ej: https://www.obi.sk/skrutkovace-vde/obi-vde-skrutkovac-1000v/p/5123456 o https://www.nay.sk/vyhladavanie?q=skrutkovac). NUNCA devuelvas solo el dominio principal o la portada genérica (como 'https://www.obi.sk').
+3. REQUISITO OBLIGATORIO DE URL DIRECTA: El campo 'url' DEBE SER LA URL DIRECTA Y VÁLIDA A LA FICHA DEL PRODUCTO O AL BUSCADOR DEL PRODUCTO en la e-commerce. NUNCA devuelvas solo el dominio principal o la portada genérica.
 4. Devuelve los resultados ESTRICTAMENTE en formato JSON con la siguiente estructura:
 
 [
@@ -249,8 +275,8 @@ Responde ÚNICAMENTE con el bloque JSON válido, sin texto explicativo previo ni
 
 def perform_fallback_search(query, category, providers_list):
     """
-    Genera resultados estructurados de demostración/fallback basados en los proveedores del Excel,
-    con URLs directas a la búsqueda de dicho producto en el e-commerce del proveedor.
+    Genera resultados estructurados de demostración/fallback limpios basados en los proveedores del Excel,
+    con URLs directas y totalmente funcionales al e-commerce del proveedor.
     """
     if not providers_list:
         providers_list = providers_df.to_dict(orient='records') if providers_df is not None else []
@@ -258,24 +284,25 @@ def perform_fallback_search(query, category, providers_list):
     sample_providers = providers_list[:4] if providers_list else [
         {"Proveedor": "VERCAJCH CENTRUM", "tipo": "Ferretería", "WEB": "http://vercajch.sk/"},
         {"Proveedor": "OBI", "tipo": "Leroy Merlin local", "WEB": "https://www.obi.sk"},
-        {"Proveedor": "HAGARD-HAL", "tipo": "Electricidad", "WEB": "http://www.hagard.sk/"},
+        {"Proveedor": "AUTOTECHNA", "tipo": "Recambios automóvil", "WEB": "https://www.autotechna.sk/"},
         {"Proveedor": "NAY", "tipo": "Electrónica y Tecnología", "WEB": "https://www.nay.sk"}
     ]
+
+    sk_query_translated = translate_to_slovak(query)
 
     simulated_results = []
     for idx, p in enumerate(sample_providers, 1):
         prov_name = p.get('Proveedor', 'Proveedor SVK')
         web_url = p.get('WEB', 'https://www.google.sk')
-        nombre_sk = f"{query.capitalize()} profesionálny SK-{idx}00"
         
-        # Generar enlace directo al producto / catálogo de búsqueda en la tienda del proveedor
-        direct_url = build_direct_search_url(web_url, nombre_sk)
+        # Generar enlace directo a la búsqueda limpia del producto en la tienda
+        direct_url = build_direct_search_url(web_url, query)
 
         simulated_results.append({
             "proveedor": prov_name,
-            "nombre_es": f"{query.title()} (Modelo Profesional SVK-{idx})",
-            "nombre_sk": nombre_sk,
-            "referencia": f"SK-REF-{idx}0948",
+            "nombre_es": f"{query.capitalize()} (Opción {idx})",
+            "nombre_sk": f"{sk_query_translated.capitalize()} (SK Catálogo {idx})",
+            "referencia": f"REF-SVK-00{idx}",
             "precio_eur": f"{12.50 + (idx * 6.80):.2f} €",
             "url": direct_url
         })
