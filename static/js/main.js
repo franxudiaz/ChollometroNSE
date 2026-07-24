@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 const data = await res.json();
                 if (data.categories && data.categories.length > 0) {
+                    // Limpiar y poblar selector de categorías
+                    categorySelect.innerHTML = '<option value="">Todas las categorías (38 Proveedores SVK)</option>';
                     data.categories.forEach(cat => {
                         const opt = document.createElement('option');
                         opt.value = cat;
@@ -30,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadCategories();
 
-    // 2. Controlar la búsqueda de productos
+    // 2. Controlar el formulario de búsqueda
     searchForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const query = searchInput.value.trim();
@@ -38,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!query) return;
 
-        setLoadingState(true, `Buscando "${query}" en catálogos de proveedores en Eslovaquia...`);
+        setLoadingState(true, `Traduciendo "${query}" al eslovaco y generando accesos a las e-commerce...`);
         resultsContainer.innerHTML = '';
 
         try {
@@ -55,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await res.json();
-            renderResults(data.results, query);
+            renderResults(data);
 
         } catch (err) {
             console.error("Error realizando la búsqueda:", err);
@@ -72,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLoadingState(isLoading, message = '') {
         if (isLoading) {
             searchBtn.disabled = true;
-            searchBtn.querySelector('.btn-text').textContent = 'Buscando proveedores eslovacos...';
+            searchBtn.querySelector('.btn-text').textContent = 'Generando búsquedas...';
             statusBar.classList.remove('hidden');
             statusText.textContent = message;
         } else {
@@ -82,37 +84,77 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 3. Renderizar resultados como tarjetas idénticas al Gem de Gemini
-    function renderResults(results, query) {
+    // 3. Renderizar las tarjetas de proveedores y accesos directos
+    function renderResults(data) {
+        const results = data.results;
+        const queryEs = data.query_es;
+        const querySk = data.query_sk;
+
         if (!results || results.length === 0) {
             resultsContainer.innerHTML = `
                 <div class="card-item" style="padding: 24px; text-align: center; color: var(--text-secondary);">
-                    🔍 No se encontraron coincidencias directas para "${query}". Intenta con otro término o selecciona "Todas las categorías".
+                    🔍 No se encontraron proveedores en la categoría seleccionada para "${queryEs}". Intenta seleccionar "Todas las categorías".
                 </div>
             `;
             return;
         }
 
+        // Encabezado de traducción realizada
+        const summaryBadge = document.createElement('div');
+        summaryBadge.style.cssText = `
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 12px 18px;
+            color: #93c5fd;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        `;
+        summaryBadge.innerHTML = `
+            <span>🇪🇸 <strong>"${escapeHtml(queryEs)}"</strong> ➔ 🇸🇰 Traducido a: <strong style="color: #60a5fa;">"${escapeHtml(querySk)}"</strong></span>
+            <span style="font-size: 0.8rem; background: #1e293b; padding: 4px 10px; border-radius: 20px; color: #f8fafc;">${results.length} Tiendas</span>
+        `;
+        resultsContainer.appendChild(summaryBadge);
+
         results.forEach((item, index) => {
             const card = document.createElement('div');
-            card.className = `card-item ${index === 0 ? 'open' : ''}`; // Desplegar primera por defecto
+            card.className = `card-item ${index < 3 ? 'open' : ''}`; // Desplegar las primeras 3 por defecto
 
-            const itemTextFormatted = `📦 Opción ${index + 1}: ${item.nombre_es}
-• Empresa: ${item.proveedor}
-• Nombre (ES): ${item.nombre_es}
-• Nombre (SK): ${item.nombre_sk}
-• Código / Referencia: ${item.referencia}
-• Precio (IVA incl.): ${item.precio_eur}
-• Enlace directo: ${item.url}`;
+            let liveProductsHtml = '';
+            if (item.live_products && item.live_products.length > 0) {
+                liveProductsHtml = `
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                        <span class="detail-label" style="margin-bottom: 8px; display: block;">Coincidencias encontradas en ${escapeHtml(item.proveedor)}:</span>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${item.live_products.map(p => `
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-input); padding: 8px 12px; border-radius: 6px; font-size: 0.85rem;">
+                                    <span style="color: var(--text-primary); max-width: 65%; font-weight: 500;">${escapeHtml(p.title_sk)}</span>
+                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                        <span style="color: var(--accent-green); font-weight: 700;">${escapeHtml(p.price)}</span>
+                                        <a href="${escapeHtml(p.url)}" target="_blank" rel="noopener" style="color: #60a5fa; text-decoration: none; font-weight: 600;">Ver Ficha ↗</a>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            const itemTextFormatted = `🏬 PROVEEDOR: ${item.proveedor} (${item.tipo})
+🇪🇸 BÚSQUEDA (ES): ${queryEs}
+🇸🇰 BÚSQUEDA EN TIENDA (SK): ${querySk}
+🔗 ENLACE DIRECTO A CATÁLOGO: ${item.search_url}`;
 
             card.innerHTML = `
                 <div class="card-header">
                     <div class="card-header-left">
-                        <span class="provider-badge">📦 Opción ${index + 1}: ${escapeHtml(item.proveedor)}</span>
-                        <h3 class="product-title-es">${escapeHtml(item.nombre_es)}</h3>
+                        <span class="provider-badge">🏬 ${escapeHtml(item.proveedor)} • ${escapeHtml(item.categoria_grupo)}</span>
+                        <h3 class="product-title-es">${escapeHtml(item.proveedor)} — Catálogo Directo</h3>
                     </div>
                     <div class="card-header-right">
-                        <span class="price-tag">${escapeHtml(item.precio_eur)}</span>
                         <span class="chevron-icon">▼</span>
                     </div>
                 </div>
@@ -120,34 +162,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="card-body">
                     <div class="details-grid">
                         <div class="detail-box">
-                            <span class="detail-label">Nombre (ES)</span>
-                            <span class="detail-value">${escapeHtml(item.nombre_es)}</span>
+                            <span class="detail-label">Búsqueda en Español (ES)</span>
+                            <span class="detail-value">${escapeHtml(queryEs)}</span>
                         </div>
                         <div class="detail-box">
-                            <span class="detail-label">Nombre en Eslovaco (SK)</span>
-                            <span class="detail-value">${escapeHtml(item.nombre_sk)}</span>
+                            <span class="detail-label">Búsqueda Ejecutada en Tienda (SK)</span>
+                            <span class="detail-value" style="color: var(--accent-cyan); font-weight:700;">${escapeHtml(querySk)}</span>
                         </div>
                         <div class="detail-box">
-                            <span class="detail-label">Código / Referencia</span>
-                            <span class="detail-value" style="font-family: monospace; color: var(--accent-cyan); font-weight:700;">${escapeHtml(item.referencia)}</span>
-                        </div>
-                        <div class="detail-box">
-                            <span class="detail-label">Empresa / Proveedor</span>
-                            <span class="detail-value">${escapeHtml(item.proveedor)}</span>
-                        </div>
-                        <div class="detail-box">
-                            <span class="detail-label">Precio (IVA incl.)</span>
-                            <span class="detail-value" style="color: var(--accent-green); font-weight:700;">${escapeHtml(item.precio_eur)}</span>
+                            <span class="detail-label">Tipo de Productos en Excel</span>
+                            <span class="detail-value">${escapeHtml(item.tipo)}</span>
                         </div>
                     </div>
 
-                    <div class="actions-row">
-                        <button class="btn-copy" data-text="${escapeAttribute(itemTextFormatted)}">
-                            📋 Copiar Ficha
-                        </button>
-                        <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="btn-link">
-                            🔗 Ver Producto Directo ↗
+                    ${liveProductsHtml}
+
+                    <div class="actions-row" style="margin-top: 16px;">
+                        <a href="${escapeHtml(item.search_url)}" target="_blank" rel="noopener noreferrer" class="btn-primary" style="flex: 1; text-decoration: none; text-align: center; justify-content: center;">
+                            🔍 Abrir Búsqueda Directa en ${escapeHtml(item.proveedor)} ↗
                         </a>
+                        <button class="btn-copy" data-text="${escapeAttribute(itemTextFormatted)}">
+                            📋 Copiar Enlace
+                        </button>
                     </div>
                 </div>
             `;
@@ -158,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.classList.toggle('open');
             });
 
-            // Botón Copiar Ficha
+            // Botón Copiar Enlace
             const copyBtn = card.querySelector('.btn-copy');
             copyBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -174,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(() => {
-                showToast("¡Ficha copiada al portapapeles! 📋");
+                showToast("¡Enlace copiado al portapapeles! 📋");
             }).catch(err => {
                 fallbackCopyText(text);
             });
@@ -190,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
         textArea.select();
         try {
             document.execCommand('copy');
-            showToast("¡Ficha copiada al portapapeles! 📋");
+            showToast("¡Enlace copiado al portapapeles! 📋");
         } catch (err) {
             console.error('No se pudo copiar:', err);
         }
