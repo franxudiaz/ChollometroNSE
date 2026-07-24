@@ -114,7 +114,7 @@ class ProvidersManager:
 
     def get_provider_search_url(self, web_url, term_sk):
         """
-        Construye la URL de búsqueda exacta y verificada para cada uno de los 38 proveedores.
+        Construye la URL de búsqueda exacta y comprobada desde los formularios de cada proveedor.
         """
         if not web_url:
             return "https://www.google.sk"
@@ -123,14 +123,21 @@ class ProvidersManager:
         parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
         domain = parsed.netloc.lower()
         
-        # Tiendas probadas y verificadas 1 por 1
-        if "outland.sk" in domain:
-            return f"https://www.outland.sk/search?phrase={term_encoded}"
+        # Tiendas comprobadas con su formulario real de búsqueda
+        if "strojeslovensko.sk" in domain:
+            return f"https://www.strojeslovensko.sk/search?search={term_encoded}&search_in_category="
         elif "armyshopbb.webnode.sk" in domain or "armyshop" in domain:
-            # Army shop no dispone de buscador funcional: enlace a su portada principal
-            return "http://armyshopbb.webnode.sk/"
+            return f"https://armyshopbb.webnode.sk/search/?text={term_encoded}&type=4"
+        elif "outland.sk" in domain:
+            return f"https://www.outland.sk/search?phrase={term_encoded}"
         elif "decathlon.sk" in domain:
             return f"https://www.decathlon.sk/search/?query={term_encoded}"
+        elif "ttech.sk" in domain:
+            return f"https://www.ttech.sk/e/search?word={term_encoded}"
+        elif "technopack.sk" in domain:
+            return f"https://www.technopack.sk/sk/vyhladavanie/?s%5Bk%5D={term_encoded}"
+        elif "eshop.vkpsteel.com" in domain or "vkpsteel" in domain:
+            return f"https://eshop.vkpsteel.com/vyhladavanie?controller=search&s={term_encoded}"
         elif "obi.sk" in domain:
             return f"https://www.obi.sk/search/{term_encoded}/"
         elif "vercajch.sk" in domain:
@@ -153,8 +160,6 @@ class ProvidersManager:
             return f"https://www.benulekaren.sk/vyhladavanie?q={term_encoded}"
         elif "xepap.sk" in domain:
             return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
-        elif "eshop.vkpsteel.com" in domain or "vkpsteel" in domain:
-            return f"https://eshop.vkpsteel.com/vyhladavanie?q={term_encoded}"
         elif "smart.sk" in domain:
             return f"https://www.smart.sk/vyhladavanie?q={term_encoded}"
         elif "gufero.sk" in domain:
@@ -163,16 +168,12 @@ class ProvidersManager:
             return f"http://www.autopiko.sk/?s={term_encoded}"
         elif "hyriak.sk" in domain:
             return f"https://www.hyriak.sk/hladaj/{term_encoded}"
-        elif "technopack.sk" in domain:
-            return f"https://www.technopack.sk/sk/katalog/?query={term_encoded}"
         elif "faxacopy.sk" in domain:
             return f"http://www.faxacopy.sk/?s={term_encoded}"
         elif "tonerservis.sk" in domain:
             return f"http://www.tonerservis.sk/?s={term_encoded}"
         elif "ibv.sk" in domain or "stavivo" in domain:
             return f"http://www.ibv.sk/?s={term_encoded}"
-        elif "strojeslovensko.sk" in domain:
-            return f"https://www.strojeslovensko.sk/?s={term_encoded}"
         elif "technikzv.sk" in domain:
             return f"http://technikzv.sk/?s={term_encoded}"
         elif "valtec.sk" in domain:
@@ -183,8 +184,6 @@ class ProvidersManager:
             return f"http://www.gatial.sk/?s={term_encoded}"
         elif "scandi.sk" in domain:
             return f"http://www.scandi.sk/?s={term_encoded}"
-        elif "ttech.sk" in domain:
-            return f"http://www.ttech.sk/?s={term_encoded}"
         elif "kapex.sk" in domain:
             return f"http://www.kapex.sk/?s={term_encoded}"
         elif "dk-ramovanie.sk" in domain:
