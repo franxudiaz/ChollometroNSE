@@ -12,30 +12,45 @@ load_dotenv()
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Configuración del archivo Excel
-EXCEL_PATH = os.path.join(os.path.dirname(__file__), 'data', 'Proveedores SVK V (VERSIÓN 1.1).xlsx')
+# Configuración de búsqueda del archivo Excel de proveedores
+def find_excel_file():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, 'Proveedores SVK V (VERSIÓN 1.1).xlsx'),
+        os.path.join(base_dir, 'data', 'Proveedores SVK V (VERSIÓN 1.1).xlsx'),
+    ]
+    # Buscar cualquier archivo Excel que contenga 'Proveedores' en la raíz o en data/
+    for folder in [base_dir, os.path.join(base_dir, 'data')]:
+        if os.path.exists(folder):
+            for f in os.listdir(folder):
+                if f.endswith('.xlsx') and 'proveed' in f.lower():
+                    candidates.append(os.path.join(folder, f))
+    
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
 
-# Carga global del catálogo de proveedores
 providers_df = None
 
 def load_providers():
     global providers_df
-    if os.path.exists(EXCEL_PATH):
+    excel_path = find_excel_file()
+    if excel_path:
         try:
-            df = pd.read_excel(EXCEL_PATH)
-            # Limpiar nombres de columnas y valores
+            df = pd.read_excel(excel_path)
             df.columns = [str(c).strip() for c in df.columns]
             df = df.fillna('')
             df['Proveedor'] = df['Proveedor'].astype(str).str.strip()
             df['tipo'] = df['tipo'].astype(str).str.strip()
             df['WEB'] = df['WEB'].astype(str).str.strip()
             providers_df = df
-            logging.info(f"Cargados {len(df)} proveedores desde {EXCEL_PATH}")
+            logging.info(f"Cargados {len(df)} proveedores desde {excel_path}")
         except Exception as e:
-            logging.error(f"Error al cargar el Excel de proveedores: {e}")
+            logging.error(f"Error al cargar el Excel de proveedores ({excel_path}): {e}")
             providers_df = pd.DataFrame(columns=['Proveedor', 'tipo', 'WEB'])
     else:
-        logging.warning(f"No se encontró el archivo Excel en {EXCEL_PATH}")
+        logging.warning("No se encontró ningún archivo Excel de proveedores.")
         providers_df = pd.DataFrame(columns=['Proveedor', 'tipo', 'WEB'])
 
 load_providers()
