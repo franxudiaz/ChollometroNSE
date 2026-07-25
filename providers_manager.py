@@ -23,8 +23,8 @@ KEY_KEYWORDS = ["llave", "llaves", "cilindro", "candado", "cerradura", "kľúč"
 
 # Lista de proveedores que disponen de tienda e-commerce directa con precios en vivo
 ECOMMERCE_PROVIDERS = [
-    "xepap", "toner servis", "obi", "vercajch", "decathlon", "nay", "autotechna", 
-    "outland", "stroje slovensko", "valtec", "hyriak", "smart computer", "vkp steel", 
+    "smart computer", "xepap", "toner servis", "obi", "vercajch", "decathlon", "nay", 
+    "autotechna", "outland", "stroje slovensko", "valtec", "hyriak", "vkp steel", 
     "copper", "hagard", "benu lekaren", "ikea", "jysk", "technopack", "t-tech", 
     "stavebniny dado", "autopiko", "gufero", "kapex", "gatial", "scandi", "agharta", "army shop"
 ]
@@ -151,8 +151,10 @@ class ProvidersManager:
         parsed = urlparse(web_url if web_url.startswith("http") else f"https://{web_url}")
         domain = parsed.netloc.lower()
         
-        # Tiendas verificadas 1 por 1 con su patrón exacto en navegador
-        if "valtec.sk" in domain:
+        # Tiendas verificadas 1 por 1 con su parámetro exacto de búsqueda
+        if "smart.sk" in domain:
+            return f"https://www.smart.sk/vyhladavanie/?string={term_encoded}"
+        elif "valtec.sk" in domain:
             return f"https://www.valtec.sk/najdene-produkty/{quote(term_sk.strip())}/"
         elif "xepap.sk" in domain:
             return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
@@ -192,8 +194,6 @@ class ProvidersManager:
             return f"https://jysk.sk/search?query={term_encoded}"
         elif "benulekaren.sk" in domain:
             return f"https://www.benulekaren.sk/vyhladavanie?q={term_encoded}"
-        elif "smart.sk" in domain:
-            return f"https://www.smart.sk/vyhladavanie?q={term_encoded}"
         elif "gufero.sk" in domain:
             return f"http://www.gufero.sk/?s={term_encoded}"
         elif "autopiko.sk" in domain:
