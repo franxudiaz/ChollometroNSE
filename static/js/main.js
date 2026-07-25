@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!query) return;
 
-        setLoadingState(true, `Traduciendo "${query}" al eslovaco y preparando accesos directos...`);
+        setLoadingState(true, `Traduciendo "${query}" al eslovaco y ordenando tiendas por e-commerce...`);
         resultsContainer.innerHTML = '';
 
         try {
@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setLoadingState(isLoading, message = '') {
         if (isLoading) {
             searchBtn.disabled = true;
-            searchBtn.querySelector('.btn-text').textContent = 'Generando accesos directos...';
+            searchBtn.querySelector('.btn-text').textContent = 'Generando accesos a catálogos...';
             statusBar.classList.remove('hidden');
             statusText.textContent = message;
         } else {
@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 3. Renderizar tarjetas de proveedores con enlaces directos
+    // 3. Renderizar tarjetas de proveedores ordenadas por tiendas E-commerce con precios
     function renderResults(data) {
         const results = data.results;
         const queryEs = data.query_es;
@@ -114,13 +114,21 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         summaryBadge.innerHTML = `
             <span>🇪🇸 Búsqueda: <strong>"${escapeHtml(queryEs)}"</strong> ➔ 🇸🇰 Traducido al Eslovaco: <strong style="color: #60a5fa; font-size: 1.05rem;">"${escapeHtml(querySk)}"</strong></span>
-            <span style="font-size: 0.85rem; background: #1e293b; padding: 4px 12px; border-radius: 20px; color: #f8fafc; font-weight: 600;">${results.length} Tiendas Filtradas</span>
+            <span style="font-size: 0.85rem; background: #1e293b; padding: 4px 12px; border-radius: 20px; color: #f8fafc; font-weight: 600;">${results.length} Proveedores</span>
         `;
         resultsContainer.appendChild(summaryBadge);
 
         results.forEach((item, index) => {
             const card = document.createElement('div');
             card.className = `card-item ${index < 4 ? 'open' : ''}`;
+
+            const ecommerceBadge = item.is_ecommerce 
+                ? '<span style="background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700;">🛒 Tienda E-Commerce (Catálogo y Precios €)</span>'
+                : '<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">📄 Servicio / Lista de Precios / Contacto</span>';
+
+            const buttonText = item.is_ecommerce 
+                ? `🔍 Abrir Búsqueda Directa en ${escapeHtml(item.proveedor)} ↗`
+                : `🌐 Ver Sitio Web / Contacto ${escapeHtml(item.proveedor)} ↗`;
 
             const itemTextFormatted = `🏬 PROVEEDOR: ${item.proveedor} (${item.tipo})
 🇪🇸 BÚSQUEDA (ES): ${queryEs}
@@ -130,7 +138,10 @@ document.addEventListener('DOMContentLoaded', () => {
             card.innerHTML = `
                 <div class="card-header">
                     <div class="card-header-left">
-                        <span class="provider-badge">🏬 ${escapeHtml(item.proveedor)} • ${escapeHtml(item.categoria_grupo)}</span>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span class="provider-badge">🏬 ${escapeHtml(item.proveedor)} • ${escapeHtml(item.categoria_grupo)}</span>
+                            ${ecommerceBadge}
+                        </div>
                         <h3 class="product-title-es">${escapeHtml(item.proveedor)} — Catálogo Directo</h3>
                     </div>
                     <div class="card-header-right">
@@ -156,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     <div class="actions-row" style="margin-top: 16px;">
                         <a href="${escapeHtml(item.search_url)}" target="_blank" rel="noopener noreferrer" class="btn-primary" style="flex: 1; text-decoration: none; text-align: center; justify-content: center; font-size: 1rem; font-weight: 700; padding: 14px 20px;">
-                            🔍 Abrir Búsqueda Directa en ${escapeHtml(item.proveedor)} ↗
+                            ${buttonText}
                         </a>
                         <button class="btn-copy" data-text="${escapeAttribute(itemTextFormatted)}">
                             📋 Copiar Enlace

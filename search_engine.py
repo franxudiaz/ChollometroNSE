@@ -18,7 +18,7 @@ def execute_search(query_es, category_group=""):
     # 1. Traducir consulta de español a eslovaco
     query_sk = translate_es_to_sk(clean_query_es)
 
-    # 2. Filtrar proveedores del Excel según la categoría seleccionada
+    # 2. Filtrar proveedores del Excel según la categoría seleccionada (con prioridad e-commerce)
     target_providers = providers_mgr.filter_providers(category_group, clean_query_es)
 
     # 3. Construir enlaces directos y limpios a cada proveedor
@@ -27,6 +27,7 @@ def execute_search(query_es, category_group=""):
         prov_name = prov["nombre"]
         prov_tipo = prov["tipo"]
         web_url = prov["web"]
+        is_ecommerce = prov.get("is_ecommerce", True)
         
         # Generar URL de búsqueda directa en el motor interno de la tienda oficial
         search_url = providers_mgr.get_provider_search_url(web_url, query_sk)
@@ -35,6 +36,7 @@ def execute_search(query_es, category_group=""):
             "proveedor": prov_name,
             "tipo": prov_tipo,
             "categoria_grupo": prov["categoria_grupo"],
+            "is_ecommerce": is_ecommerce,
             "web_oficial": web_url,
             "nombre_es": clean_query_es.capitalize(),
             "nombre_sk": query_sk,

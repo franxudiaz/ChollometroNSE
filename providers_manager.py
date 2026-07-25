@@ -21,6 +21,14 @@ STANDARD_CATEGORIES = [
 
 KEY_KEYWORDS = ["llave", "llaves", "cilindro", "candado", "cerradura", "kľúč", "kľúče", "vložka", "zámok"]
 
+# Lista de proveedores que disponen de tienda e-commerce directa con precios en vivo
+ECOMMERCE_PROVIDERS = [
+    "xepap", "toner servis", "obi", "vercajch", "decathlon", "nay", "autotechna", 
+    "outland", "stroje slovensko", "valtec", "hyriak", "smart computer", "vkp steel", 
+    "copper", "hagard", "benu lekaren", "ikea", "jysk", "technopack", "t-tech", 
+    "stavebniny dado", "autopiko", "gufero", "kapex", "gatial", "scandi", "agharta", "army shop"
+]
+
 def find_excel_file():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
@@ -61,11 +69,13 @@ class ProvidersManager:
                 web = str(r.get('WEB', '')).strip()
                 if name and web:
                     category_group = self.assign_category_group(name, tipo)
+                    is_ecommerce = any(e in name.lower() for e in ECOMMERCE_PROVIDERS)
                     self.providers.append({
                         "id": name.lower().replace(" ", "_"),
                         "nombre": name,
                         "tipo": tipo,
                         "categoria_grupo": category_group,
+                        "is_ecommerce": is_ecommerce,
                         "web": web if web.startswith("http") else f"https://{web}"
                     })
             logging.info(f"Cargados {len(self.providers)} proveedores desde Excel.")
@@ -125,6 +135,9 @@ class ProvidersManager:
                 if category_group.lower() not in p["categoria_grupo"].lower() and category_group.lower() not in p["tipo"].lower():
                     continue
             filtered.append(p)
+
+        # Ordenar: TIENDAS E-COMMERCE CON PRECIOS EN VIVO PRIMERO
+        filtered.sort(key=lambda x: (not x["is_ecommerce"], x["nombre"]))
         return filtered
 
     def get_provider_search_url(self, web_url, term_sk):
@@ -141,6 +154,10 @@ class ProvidersManager:
         # Tiendas verificadas 1 por 1 con su patrón exacto en navegador
         if "valtec.sk" in domain:
             return f"https://www.valtec.sk/najdene-produkty/{quote(term_sk.strip())}/"
+        elif "xepap.sk" in domain:
+            return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
+        elif "tonerservis.sk" in domain:
+            return f"http://www.tonerservis.sk/?s={term_encoded}"
         elif "strojeslovensko.sk" in domain:
             return f"https://www.strojeslovensko.sk/search?search={term_encoded}&search_in_category="
         elif "armyshopbb.webnode.sk" in domain or "armyshop" in domain:
@@ -175,8 +192,6 @@ class ProvidersManager:
             return f"https://jysk.sk/search?query={term_encoded}"
         elif "benulekaren.sk" in domain:
             return f"https://www.benulekaren.sk/vyhladavanie?q={term_encoded}"
-        elif "xepap.sk" in domain:
-            return f"https://www.xepap.sk/vyhladavanie?q={term_encoded}"
         elif "smart.sk" in domain:
             return f"https://www.smart.sk/vyhladavanie?q={term_encoded}"
         elif "gufero.sk" in domain:
@@ -186,9 +201,7 @@ class ProvidersManager:
         elif "hyriak.sk" in domain:
             return f"https://www.hyriak.sk/hladaj/{term_encoded}"
         elif "faxacopy.sk" in domain:
-            return f"http://www.faxacopy.sk/?s={term_encoded}"
-        elif "tonerservis.sk" in domain:
-            return f"http://www.tonerservis.sk/?s={term_encoded}"
+            return "https://www.faxacopy.sk/cennik/"
         elif "ibv.sk" in domain or "stavivo" in domain:
             return f"http://www.ibv.sk/?s={term_encoded}"
         elif "technikzv.sk" in domain:
