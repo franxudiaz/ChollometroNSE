@@ -5,10 +5,21 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, unquote
 from deep_translator import GoogleTranslator
 
+# Cabeceras completas de navegador de alta fidelidad para evitar bloqueos HTTP 403 en servidores cloud
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'sk-SK,sk;q=0.9,en-US;q=0.8,en;q=0.7,es;q=0.6'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'sk-SK,sk;q=0.9,es-ES;q=0.8,es;q=0.7,en-US;q=0.6,en;q=0.5',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1'
 }
 
 RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false"}
@@ -16,7 +27,7 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 def extract_product_data(url):
     """
     Motor avanzado y tolerante a fallos para extraer Código, Referencia, Nomenclatura (ES/SK) e Importe (con IVA)
-    de cualquier e-commerce en Eslovaquia.
+    de cualquier e-commerce en Eslovaquia, optimizado para entornos de servidor (PythonAnywhere).
     """
     clean_url = (url or '').strip()
     if not clean_url:
@@ -32,12 +43,15 @@ def extract_product_data(url):
     try:
         r = requests.get(clean_url, headers=HEADERS, timeout=8)
         if r.status_code != 200:
+            logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}, usando extractor de URL slug.")
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")
 
         html_text = r.text
         soup = BeautifulSoup(html_text, 'html.parser')
 
+        # -------------------------------------------------------------
         # 1. TÍTULO EN ESLOVACO (Title SK)
+        # -------------------------------------------------------------
         title_sk = ""
         try:
             h1 = soup.find('h1')
@@ -58,39 +72,29 @@ def extract_product_data(url):
             path_parts = parsed.path.strip('/').split('/')
             title_sk = path_parts[-1].replace('-', ' ').replace('.html', '').capitalize() if path_parts else "Producto"
 
-        # Limpiar marcas de agua comerciales
+        # Limpiar sufijos comerciales (ej. " | NAY", " :: Outland", " - Decathlon")
         title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
-        # 2. TRADUCCIÓN AL ESPAÑOL (Title ES)
-        title_es = title_sk
-        if title_sk:
-            try:
-                translated = GoogleTranslator(source='sk', target='es').translate(title_sk)
-                if translated and len(translated.strip()) > 0:
-                    title_es = translated.strip()
-            except Exception:
-                pass
-
-        nomenclatura = f"{title_es} / {title_sk}"
-
-        # 3. REFERENCIA / SKU / CÓDIGO DE PRODUCTO
+        # -------------------------------------------------------------
+        # 2. REFERENCIA / SKU / CÓDIGO DE PRODUCTO
+        # -------------------------------------------------------------
         referencia = ""
         
-        # a) Hash ID (#3679)
-        if parsed.fragment and parsed.fragment.isdigit():
+        # a) Buscar código en URL slug primero (ej: NAY 920-011590, Decathlon 306560-136504, Smart 580-AKOX, Valtec 4932492462)
+        ref_in_url = re.search(r'(\d{3,6}-\d{5,8})', clean_url) or \
+                     re.search(r'-(\d{5,12})(?:-|\.html|#|$)', clean_url) or \
+                     re.search(r'/([A-Z0-9]{3,6}-[A-Z0-9]{4,8})/?$', clean_url, re.IGNORECASE)
+        
+        if ref_in_url:
+            code_val = ref_in_url.group(1).upper()
+            if code_val.lower() not in RESERVED_JS_WORDS:
+                referencia = f"ID {code_val}" if (code_val.isdigit() and len(code_val) < 8) else code_val
+
+        # b) Hash ID (#3679)
+        if not referencia and parsed.fragment and parsed.fragment.isdigit():
             referencia = f"ID {parsed.fragment}"
 
-        # b) Código en URL (ej: Valtec 4932492462, Smart 580-AKOX, NAY 920-011590, Decathlon 306560-136504)
-        if not referencia:
-            url_code_match = re.search(r'-(\d{7,12})/?$', clean_url) or \
-                             re.search(r'(\d{3,6}-\d{5,8})', clean_url) or \
-                             re.search(r'-([a-zA-Z0-9]{3,6}-[a-zA-Z0-9]{3,8})/?$', clean_url)
-            if url_code_match:
-                code_val = url_code_match.group(1).upper()
-                if code_val.lower() not in RESERVED_JS_WORDS:
-                    referencia = f"ID {code_val}" if code_val.isdigit() and len(code_val) < 8 else code_val
-
-        # c) Meta tags / Atributos de producto
+        # c) Meta tags / Atributos HTML
         if not referencia:
             try:
                 decathlon_ref = re.search(r'product-reference["\']?\s*>\s*(\d+)', html_text, re.IGNORECASE) or \
@@ -117,7 +121,29 @@ def extract_product_data(url):
         if not referencia or len(referencia) < 3 or referencia.lower() in RESERVED_JS_WORDS:
             referencia = f"REF-{codigo.upper()}"
 
+        # Limpiar el número de referencia del título si está duplicado
+        if referencia and referencia in title_sk:
+            clean_title_sk = title_sk.replace(referencia, '').strip(' -()')
+            if len(clean_title_sk) > 3:
+                title_sk = clean_title_sk
+
+        # -------------------------------------------------------------
+        # 3. TRADUCCIÓN AL ESPAÑOL (Title ES)
+        # -------------------------------------------------------------
+        title_es = title_sk
+        if title_sk:
+            try:
+                translated = GoogleTranslator(source='sk', target='es').translate(title_sk)
+                if translated and len(translated.strip()) > 0:
+                    title_es = translated.strip()
+            except Exception:
+                pass
+
+        nomenclatura = f"{title_es} / {title_sk}"
+
+        # -------------------------------------------------------------
         # 4. IMPORTE UNITARIO (CON IVA EN EUROS)
+        # -------------------------------------------------------------
         price_formatted = "No especificado"
         try:
             # Meta tags de precio
@@ -129,7 +155,7 @@ def extract_product_data(url):
                 p_val = price_meta['content'].strip()
                 price_formatted = p_val.replace('.', ',')
             else:
-                # Buscar en HTML precios con DPH / EUR
+                # Patrones en HTML (ej. <span class="price-finally">35,90 €</span>, 39,90 €)
                 price_match = re.search(r'class=["\'][^"\']*(?:price-finally|price|cena|dph)[^"\']*["\'][^>]*>\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE) or \
                               re.search(r'([\d\s\.,]{2,8})\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE) or \
                               re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
@@ -163,11 +189,24 @@ Importe unitario (con iva): {price_formatted}"""
 
 def generate_fallback_result(url, codigo, default_title):
     """
-    Respuesta tolerante a fallos si un sitio bloquea la lectura directa.
+    Extractor inteligente desde el slug de la URL si el sitio web bloquea las peticiones desde servidores cloud.
     """
-    path_slug = unquote(urlparse(url).path.strip('/').split('/')[-1]).replace('-', ' ').replace('.html', '').capitalize()
-    title_sk = path_slug if len(path_slug) > 3 else default_title
-    
+    parsed = urlparse(url)
+    slug = unquote(parsed.path.strip('/').split('/')[-1]).replace('.html', '')
+
+    # Extraer referencia del slug
+    referencia = f"REF-{codigo.upper()}"
+    ref_match = re.search(r'(\d{3,6}-\d{5,8})', slug) or re.search(r'-(\d{5,10})(?:-|$)', slug)
+    if ref_match:
+        found_code = ref_match.group(1)
+        referencia = found_code
+        slug = slug.replace(found_code, '').strip('-')
+
+    # Limpiar título
+    title_sk = slug.replace('-', ' ').strip().capitalize()
+    if not title_sk or len(title_sk) < 3:
+        title_sk = default_title
+
     title_es = title_sk
     try:
         translated = GoogleTranslator(source='sk', target='es').translate(title_sk)
@@ -177,17 +216,17 @@ def generate_fallback_result(url, codigo, default_title):
         pass
 
     formatted_text = f"""Codigo:  {codigo}
-Referencia: REF-{codigo.upper()}
+Referencia: {referencia}
 Nomenclatura: {title_es} / {title_sk}
-Importe unitario (con iva): No especificado"""
+Importe unitario (con iva): Consultar en tienda"""
 
     return {
         "codigo": codigo,
-        "referencia": f"REF-{codigo.upper()}",
+        "referencia": referencia,
         "nomenclatura": f"{title_es} / {title_sk}",
         "title_es": title_es,
         "title_sk": title_sk,
-        "importe_unitario": "No especificado",
+        "importe_unitario": "Consultar en tienda",
         "formatted_text": formatted_text,
         "url": url
     }
