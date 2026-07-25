@@ -1,11 +1,11 @@
 import re
+import json
 import logging
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, unquote
 from deep_translator import GoogleTranslator
 
-# Cabeceras completas de navegador de alta fidelidad para evitar bloqueos HTTP 403 en servidores cloud
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -22,12 +22,46 @@ HEADERS = {
     'Upgrade-Insecure-Requests': '1'
 }
 
-RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false"}
+RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "nohavice", "klavesnica"}
+
+def extract_sku_from_url(clean_url, codigo):
+    """
+    Extrae la referencia/SKU real del producto desde la estructura de la URL.
+    """
+    parsed = urlparse(clean_url)
+    
+    # 1. Fragmento Hash (#3679)
+    if parsed.fragment and re.search(r'\d{3,}', parsed.fragment):
+        m = re.search(r'(\d{3,})', parsed.fragment)
+        return f"ID {m.group(1)}"
+        
+    path = parsed.path.strip('/')
+    parts = path.split('/')
+    
+    # 2. Buscar en los segmentos de la URL (Smart 580-AKOX, NAY 920-011590, Decathlon 306560-136504, Valtec 4932492462)
+    for p in reversed(parts):
+        # Patrón alfanumérico limpio (ej: 580-AKOX, 920-011590, 306560-136504)
+        m1 = re.search(r'(\d{3,6}-[A-Za-z0-9]{3,8})', p)
+        if m1 and m1.group(1).lower() not in RESERVED_JS_WORDS:
+            return m1.group(1).upper()
+            
+        # Código numérico directo (ej: 4932492462, 4007875, 8666242)
+        m2 = re.search(r'-(\d{5,12})(?:-|\.html|#|$)', p) or re.search(r'/p/(\d{5,12})', clean_url) or re.search(r'(\d{6,12})', p)
+        if m2:
+            code = m2.group(1)
+            return f"ID {code}" if len(code) < 8 else code
+
+        # Modelo tipo US-580-AKOX o KB740
+        m3 = re.search(r'([A-Za-z]{0,3}-?\d{3,5}-[A-Za-z0-9]{3,6})', p, re.IGNORECASE)
+        if m3 and m3.group(1).lower() not in RESERVED_JS_WORDS:
+            return m3.group(1).upper()
+
+    return f"REF-{codigo.upper()}"
 
 def extract_product_data(url):
     """
-    Motor avanzado y tolerante a fallos para extraer Código, Referencia, Nomenclatura (ES/SK) e Importe (con IVA)
-    de cualquier e-commerce en Eslovaquia, optimizado para entornos de servidor (PythonAnywhere).
+    Motor avanzado para extraer Código, Referencia, Nomenclatura (ES/SK) e Importe (con IVA)
+    de cualquier e-commerce en Eslovaquia.
     """
     clean_url = (url or '').strip()
     if not clean_url:
@@ -43,7 +77,7 @@ def extract_product_data(url):
     try:
         r = requests.get(clean_url, headers=HEADERS, timeout=8)
         if r.status_code != 200:
-            logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}, usando extractor de URL slug.")
+            logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}")
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")
 
         html_text = r.text
@@ -72,30 +106,16 @@ def extract_product_data(url):
             path_parts = parsed.path.strip('/').split('/')
             title_sk = path_parts[-1].replace('-', ' ').replace('.html', '').capitalize() if path_parts else "Producto"
 
-        # Limpiar sufijos comerciales (ej. " | NAY", " :: Outland", " - Decathlon")
+        # Limpiar marcas de agua comerciales
         title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE PRODUCTO
         # -------------------------------------------------------------
-        referencia = ""
+        referencia = extract_sku_from_url(clean_url, codigo)
         
-        # a) Buscar código en URL slug primero (ej: NAY 920-011590, Decathlon 306560-136504, Smart 580-AKOX, Valtec 4932492462)
-        ref_in_url = re.search(r'(\d{3,6}-\d{5,8})', clean_url) or \
-                     re.search(r'-(\d{5,12})(?:-|\.html|#|$)', clean_url) or \
-                     re.search(r'/([A-Z0-9]{3,6}-[A-Z0-9]{4,8})/?$', clean_url, re.IGNORECASE)
-        
-        if ref_in_url:
-            code_val = ref_in_url.group(1).upper()
-            if code_val.lower() not in RESERVED_JS_WORDS:
-                referencia = f"ID {code_val}" if (code_val.isdigit() and len(code_val) < 8) else code_val
-
-        # b) Hash ID (#3679)
-        if not referencia and parsed.fragment and parsed.fragment.isdigit():
-            referencia = f"ID {parsed.fragment}"
-
-        # c) Meta tags / Atributos HTML
-        if not referencia:
+        # Buscar en metadatos y JSON-LD si la URL no tenía formato directo
+        if "REF-" in referencia:
             try:
                 decathlon_ref = re.search(r'product-reference["\']?\s*>\s*(\d+)', html_text, re.IGNORECASE) or \
                                 re.search(r'["\']modelId["\']\s*:\s*["\']?(\d+)', html_text)
@@ -118,10 +138,7 @@ def extract_product_data(url):
             except Exception:
                 pass
 
-        if not referencia or len(referencia) < 3 or referencia.lower() in RESERVED_JS_WORDS:
-            referencia = f"REF-{codigo.upper()}"
-
-        # Limpiar el número de referencia del título si está duplicado
+        # Limpiar la referencia del título para evitar duplicación
         if referencia and referencia in title_sk:
             clean_title_sk = title_sk.replace(referencia, '').strip(' -()')
             if len(clean_title_sk) > 3:
@@ -144,27 +161,48 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         # 4. IMPORTE UNITARIO (CON IVA EN EUROS)
         # -------------------------------------------------------------
-        price_formatted = "No especificado"
-        try:
-            # Meta tags de precio
+        price_formatted = ""
+        
+        # a) Buscar en JSON-LD (Schema.org)
+        for s in soup.find_all('script', type='application/ld+json'):
+            if s.string:
+                try:
+                    js_data = json.loads(s.string)
+                    if isinstance(js_data, dict):
+                        offers = js_data.get('offers', {})
+                        if isinstance(offers, list) and len(offers) > 0:
+                            offers = offers[0]
+                        if isinstance(offers, dict):
+                            p_num = offers.get('price') or offers.get('lowPrice')
+                            if p_num:
+                                price_formatted = str(p_num).replace('.', ',')
+                                break
+                except Exception:
+                    pass
+
+        # b) Buscar en Meta Tags
+        if not price_formatted:
             price_meta = soup.find('meta', property='product:price:amount') or \
                          soup.find('meta', attrs={'itemprop': 'price'}) or \
-                         soup.find('meta', attrs={'name': 'price'})
+                         soup.find('meta', attrs={'name': 'price'}) or \
+                         soup.find('meta', property='og:price:amount')
             
             if price_meta and price_meta.get('content'):
                 p_val = price_meta['content'].strip()
                 price_formatted = p_val.replace('.', ',')
-            else:
-                # Patrones en HTML (ej. <span class="price-finally">35,90 €</span>, 39,90 €)
-                price_match = re.search(r'class=["\'][^"\']*(?:price-finally|price|cena|dph)[^"\']*["\'][^>]*>\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE) or \
-                              re.search(r'([\d\s\.,]{2,8})\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE) or \
-                              re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
-                
-                if price_match:
-                    p_val = price_match.group(1).strip().replace(" ", "")
-                    price_formatted = p_val.replace('.', ',')
-        except Exception:
-            pass
+
+        # c) Buscar en clases HTML
+        if not price_formatted:
+            price_match = re.search(r'class=["\'][^"\']*(?:price-finally|price|cena|dph|amount)[^"\']*["\'][^>]*>\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE) or \
+                          re.search(r'([\d\s\.,]{2,8})\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE) or \
+                          re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
+            
+            if price_match:
+                p_val = price_match.group(1).strip().replace(" ", "")
+                price_formatted = p_val.replace('.', ',')
+
+        if not price_formatted:
+            price_formatted = "Consultar en tienda online (€)"
 
         # Formato final exacto solicitado por el usuario
         formatted_result = f"""Codigo:  {codigo}
@@ -189,18 +227,15 @@ Importe unitario (con iva): {price_formatted}"""
 
 def generate_fallback_result(url, codigo, default_title):
     """
-    Extractor inteligente desde el slug de la URL si el sitio web bloquea las peticiones desde servidores cloud.
+    Extractor inteligente desde la estructura de la URL si la web bloquea peticiones de servidor.
     """
     parsed = urlparse(url)
     slug = unquote(parsed.path.strip('/').split('/')[-1]).replace('.html', '')
 
-    # Extraer referencia del slug
-    referencia = f"REF-{codigo.upper()}"
-    ref_match = re.search(r'(\d{3,6}-\d{5,8})', slug) or re.search(r'-(\d{5,10})(?:-|$)', slug)
-    if ref_match:
-        found_code = ref_match.group(1)
-        referencia = found_code
-        slug = slug.replace(found_code, '').strip('-')
+    # Extraer referencia universal de la URL
+    referencia = extract_sku_from_url(url, codigo)
+    if referencia and "REF-" not in referencia:
+        slug = slug.replace(referencia.replace("ID ", ""), "").strip('-')
 
     # Limpiar título
     title_sk = slug.replace('-', ' ').strip().capitalize()
@@ -218,7 +253,7 @@ def generate_fallback_result(url, codigo, default_title):
     formatted_text = f"""Codigo:  {codigo}
 Referencia: {referencia}
 Nomenclatura: {title_es} / {title_sk}
-Importe unitario (con iva): Consultar en tienda"""
+Importe unitario (con iva): Consultar en tienda online (€)"""
 
     return {
         "codigo": codigo,
@@ -226,7 +261,7 @@ Importe unitario (con iva): Consultar en tienda"""
         "nomenclatura": f"{title_es} / {title_sk}",
         "title_es": title_es,
         "title_sk": title_sk,
-        "importe_unitario": "Consultar en tienda",
+        "importe_unitario": "Consultar en tienda online (€)",
         "formatted_text": formatted_text,
         "url": url
     }
