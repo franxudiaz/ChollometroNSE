@@ -17,20 +17,25 @@ HEADERS = {
     'Sec-Ch-Ua-Platform': '"Windows"',
     'Sec-Fetch-Dest': 'document',
     'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-Site': 'same-origin',
     'Sec-Fetch-User': '?1',
     'Upgrade-Insecure-Requests': '1'
 }
 
 RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "nohavice", "klavesnica"}
 
-def extract_sku_from_url(clean_url, codigo):
+def extract_sku_from_text_or_url(clean_url, html_text, codigo):
     """
-    Extrae la referencia/SKU real del producto desde la estructura de la URL.
+    Extrae con máxima precisión la referencia/SKU real del producto (priorizando códigos del fabricante como 920-013033, 920-011590, 580-AKOX, 306560-136504).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Fragmento Hash (#3679)
+    # 1. Prioridad Absoluta: Formato SKU numérico de fabricante (ej: 920-013033, 920-011590, 306560-136504, 580-AKOX) en URL
+    m_num_sku = re.search(r'(\d{3,6}-\d{5,8})', clean_url)
+    if m_num_sku:
+        return m_num_sku.group(1).upper()
+
+    # 2. Fragmento Hash (#3679)
     if parsed.fragment and re.search(r'\d{3,}', parsed.fragment):
         m = re.search(r'(\d{3,})', parsed.fragment)
         return f"ID {m.group(1)}"
@@ -38,23 +43,28 @@ def extract_sku_from_url(clean_url, codigo):
     path = parsed.path.strip('/')
     parts = path.split('/')
     
-    # 2. Buscar en los segmentos de la URL (Smart 580-AKOX, NAY 920-011590, Decathlon 306560-136504, Valtec 4932492462)
+    # 3. Buscar en el HTML por metadatos o texto explícito (Kód výrobcu / Code / SKU)
+    if html_text:
+        # p.ej: Kód výrobcu: 920-013033 o Part Number / MPN
+        mpn_match = re.search(r'(?:Kód výrobcu|Kód|Part Number|MPN|SKU|Art\.?\s*č\.?)\s*:?\s*</?[^>]+>\s*([A-Z0-9\-_]{4,20})', html_text, re.IGNORECASE) or \
+                    re.search(r'(?:Kód výrobcu|Kód|Part Number|MPN|SKU|Art\.?\s*č\.?)\s*:?\s*([A-Z0-9\-_]{4,20})', html_text, re.IGNORECASE)
+        if mpn_match:
+            code_val = mpn_match.group(1).strip()
+            if code_val.lower() not in RESERVED_JS_WORDS and len(code_val) >= 4:
+                return code_val.upper()
+
+    # 4. Buscar códigos numéricos o alfanuméricos en el path de la URL
     for p in reversed(parts):
-        # Patrón alfanumérico limpio (ej: 580-AKOX, 920-011590, 306560-136504)
+        # Alfanumérico tipo 580-AKOX
         m1 = re.search(r'(\d{3,6}-[A-Za-z0-9]{3,8})', p)
         if m1 and m1.group(1).lower() not in RESERVED_JS_WORDS:
             return m1.group(1).upper()
             
-        # Código numérico directo (ej: 4932492462, 4007875, 8666242)
+        # Código numérico directo largo (ej: 4932492462, 4007875, 8666242)
         m2 = re.search(r'-(\d{5,12})(?:-|\.html|#|$)', p) or re.search(r'/p/(\d{5,12})', clean_url) or re.search(r'(\d{6,12})', p)
         if m2:
             code = m2.group(1)
             return f"ID {code}" if len(code) < 8 else code
-
-        # Modelo tipo US-580-AKOX o KB740
-        m3 = re.search(r'([A-Za-z]{0,3}-?\d{3,5}-[A-Za-z0-9]{3,6})', p, re.IGNORECASE)
-        if m3 and m3.group(1).lower() not in RESERVED_JS_WORDS:
-            return m3.group(1).upper()
 
     return f"REF-{codigo.upper()}"
 
@@ -74,8 +84,12 @@ def extract_product_data(url):
     domain_clean = parsed.netloc.lower().replace("www.", "")
     codigo = domain_clean.split('.')[0].lower() or "tienda"
 
+    # Preparar cabeceras con Referer dinámico del propio dominio
+    req_headers = HEADERS.copy()
+    req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
+
     try:
-        r = requests.get(clean_url, headers=HEADERS, timeout=8)
+        r = requests.get(clean_url, headers=req_headers, timeout=8)
         if r.status_code != 200:
             logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}")
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")
@@ -106,41 +120,17 @@ def extract_product_data(url):
             path_parts = parsed.path.strip('/').split('/')
             title_sk = path_parts[-1].replace('-', ' ').replace('.html', '').capitalize() if path_parts else "Producto"
 
-        # Limpiar marcas de agua comerciales
+        # Limpiar marcas comerciales en el título
         title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
-        # 2. REFERENCIA / SKU / CÓDIGO DE PRODUCTO
+        # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE
         # -------------------------------------------------------------
-        referencia = extract_sku_from_url(clean_url, codigo)
-        
-        # Buscar en metadatos y JSON-LD si la URL no tenía formato directo
-        if "REF-" in referencia:
-            try:
-                decathlon_ref = re.search(r'product-reference["\']?\s*>\s*(\d+)', html_text, re.IGNORECASE) or \
-                                re.search(r'["\']modelId["\']\s*:\s*["\']?(\d+)', html_text)
-                if decathlon_ref:
-                    referencia = f"ID {decathlon_ref.group(1)}"
-                else:
-                    sku_meta = soup.find('meta', property='product:retailer_item_id') or \
-                               soup.find('meta', attrs={'itemprop': 'sku'}) or \
-                               soup.find('meta', attrs={'name': 'sku'})
-                    if sku_meta and sku_meta.get('content'):
-                        sku_val = sku_meta['content'].strip()
-                        if sku_val.lower() not in RESERVED_JS_WORDS:
-                            referencia = sku_val
-                    else:
-                        code_match = re.search(r'(?:Kód|ID|Ref|Referencia|Číslo produktu|Art\.?\s*č\.?)\s*:?\s*([A-Z0-9\-_]{4,20})', html_text, re.IGNORECASE)
-                        if code_match:
-                            code_val = code_match.group(1).strip()
-                            if code_val.lower() not in RESERVED_JS_WORDS:
-                                referencia = code_val
-            except Exception:
-                pass
+        referencia = extract_sku_from_text_or_url(clean_url, html_text, codigo)
 
-        # Limpiar la referencia del título para evitar duplicación
+        # Si la referencia está dentro del título, limpiarla para no duplicarla
         if referencia and referencia in title_sk:
-            clean_title_sk = title_sk.replace(referencia, '').strip(' -()')
+            clean_title_sk = title_sk.replace(f"({referencia})", "").replace(referencia, '').strip(' -()')
             if len(clean_title_sk) > 3:
                 title_sk = clean_title_sk
 
@@ -163,24 +153,31 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
         
-        # a) Buscar en JSON-LD (Schema.org)
-        for s in soup.find_all('script', type='application/ld+json'):
-            if s.string:
-                try:
-                    js_data = json.loads(s.string)
-                    if isinstance(js_data, dict):
-                        offers = js_data.get('offers', {})
-                        if isinstance(offers, list) and len(offers) > 0:
-                            offers = offers[0]
-                        if isinstance(offers, dict):
-                            p_num = offers.get('price') or offers.get('lowPrice')
-                            if p_num:
-                                price_formatted = str(p_num).replace('.', ',')
-                                break
-                except Exception:
-                    pass
+        # a) Buscar 'Cena s DPH' contemplando etiquetas HTML intermedias (ej. NAY: <span class="sr-only">Cena s DPH: </span> 109,90 €)
+        price_match = re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
+        if price_match:
+            p_val = price_match.group(1).strip().replace(" ", "")
+            price_formatted = p_val.replace('.', ',')
 
-        # b) Buscar en Meta Tags
+        # b) Buscar en JSON-LD (Schema.org)
+        if not price_formatted:
+            for s in soup.find_all('script', type='application/ld+json'):
+                if s.string:
+                    try:
+                        js_data = json.loads(s.string)
+                        if isinstance(js_data, dict):
+                            offers = js_data.get('offers', {})
+                            if isinstance(offers, list) and len(offers) > 0:
+                                offers = offers[0]
+                            if isinstance(offers, dict):
+                                p_num = offers.get('price') or offers.get('lowPrice')
+                                if p_num:
+                                    price_formatted = str(p_num).replace('.', ',')
+                                    break
+                    except Exception:
+                        pass
+
+        # c) Buscar en Meta Tags
         if not price_formatted:
             price_meta = soup.find('meta', property='product:price:amount') or \
                          soup.find('meta', attrs={'itemprop': 'price'}) or \
@@ -191,14 +188,13 @@ def extract_product_data(url):
                 p_val = price_meta['content'].strip()
                 price_formatted = p_val.replace('.', ',')
 
-        # c) Buscar en clases HTML
+        # d) Buscar por clases CSS de precio
         if not price_formatted:
-            price_match = re.search(r'class=["\'][^"\']*(?:price-finally|price|cena|dph|amount)[^"\']*["\'][^>]*>\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE) or \
-                          re.search(r'([\d\s\.,]{2,8})\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE) or \
-                          re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
+            price_match_css = re.search(r'class=["\'][^"\']*(?:price-finally|price|cena|dph|amount)[^"\']*["\'][^>]*>\s*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE) or \
+                              re.search(r'([\d\s\.,]{2,8})\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE)
             
-            if price_match:
-                p_val = price_match.group(1).strip().replace(" ", "")
+            if price_match_css:
+                p_val = price_match_css.group(1).strip().replace(" ", "")
                 price_formatted = p_val.replace('.', ',')
 
         if not price_formatted:
@@ -232,12 +228,10 @@ def generate_fallback_result(url, codigo, default_title):
     parsed = urlparse(url)
     slug = unquote(parsed.path.strip('/').split('/')[-1]).replace('.html', '')
 
-    # Extraer referencia universal de la URL
-    referencia = extract_sku_from_url(url, codigo)
+    referencia = extract_sku_from_text_or_url(url, "", codigo)
     if referencia and "REF-" not in referencia:
         slug = slug.replace(referencia.replace("ID ", ""), "").strip('-')
 
-    # Limpiar título
     title_sk = slug.replace('-', ' ').strip().capitalize()
     if not title_sk or len(title_sk) < 3:
         title_sk = default_title
