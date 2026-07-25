@@ -8,6 +8,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsContainer = document.getElementById('results-container');
     const toast = document.getElementById('toast');
 
+    // Extractor por URL
+    const productUrlInput = document.getElementById('product-url-input');
+    const extractBtn = document.getElementById('extract-btn');
+    const extractedResultBox = document.getElementById('extracted-result-box');
+    const extractedText = document.getElementById('extracted-text');
+    const copyExtractedBtn = document.getElementById('copy-extracted-btn');
+
     // 1. Cargar categorías dinámicas desde el backend
     async function loadCategories() {
         try {
@@ -70,6 +77,52 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 3. Extractor de Ficha de Producto por URL
+    extractBtn.addEventListener('click', async () => {
+        const url = productUrlInput.value.trim();
+        if (!url) {
+            showToast("⚠️ Por favor pega una URL de producto válida.");
+            return;
+        }
+
+        extractBtn.disabled = true;
+        extractBtn.querySelector('.btn-text').textContent = 'Analizando página del producto... ⏳';
+        extractedResultBox.classList.add('hidden');
+
+        try {
+            const res = await fetch('/api/extract_product', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url })
+            });
+
+            const data = await res.json();
+            if (res.ok && data.formatted_text) {
+                extractedText.textContent = data.formatted_text;
+                extractedResultBox.classList.remove('hidden');
+                showToast("¡Ficha de producto generada con éxito! ⚡");
+            } else {
+                showToast(`❌ Error: ${data.error || 'No se pudieron extraer datos'}`);
+            }
+        } catch (err) {
+            console.error("Error al extraer datos:", err);
+            showToast("❌ Error al conectarse con el servidor.");
+        } finally {
+            extractBtn.disabled = false;
+            extractBtn.querySelector('.btn-text').textContent = '⚡ Obtener Datos de Ficha';
+        }
+    });
+
+    // Copiar Ficha Completa
+    copyExtractedBtn.addEventListener('click', () => {
+        const textToCopy = extractedText.textContent;
+        if (textToCopy) {
+            copyToClipboard(textToCopy);
+        }
+    });
+
     function setLoadingState(isLoading, message = '') {
         if (isLoading) {
             searchBtn.disabled = true;
@@ -83,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 3. Renderizar tarjetas de proveedores ordenadas por tiendas E-commerce con precios
+    // 4. Renderizar tarjetas de proveedores ordenadas por tiendas E-commerce con precios
     function renderResults(data) {
         const results = data.results;
         const queryEs = data.query_es;
@@ -194,11 +247,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 4. Copiar al portapapeles
+    // 5. Copiar al portapapeles
     function copyToClipboard(text) {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(() => {
-                showToast("¡Enlace copiado al portapapeles! 📋");
+                showToast("¡Copiado al portapapeles! 📋");
             }).catch(err => {
                 fallbackCopyText(text);
             });
@@ -214,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
         textArea.select();
         try {
             document.execCommand('copy');
-            showToast("¡Enlace copiado al portapapeles! 📋");
+            showToast("¡Copiado al portapapeles! 📋");
         } catch (err) {
             console.error('No se pudo copiar:', err);
         }

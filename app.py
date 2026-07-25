@@ -3,6 +3,7 @@ import logging
 from flask import Flask, render_template, request, jsonify
 from search_engine import execute_search
 from providers_manager import providers_mgr
+from product_extractor import extract_product_data
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +35,20 @@ def search():
         "count": len(search_result["results"]),
         "results": search_result["results"]
     })
+
+@app.route('/api/extract_product', methods=['POST'])
+def extract_product():
+    data = request.get_json() or {}
+    url = data.get('url', '').strip()
+
+    if not url:
+        return jsonify({"error": "Debes proporcionar una URL válida de la ficha del producto."}), 400
+
+    result = extract_product_data(url)
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 400
+
+    return jsonify(result)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

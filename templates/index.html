@@ -22,6 +22,7 @@
 
         <!-- Main Search Section -->
         <main class="search-section">
+            <!-- Form 1: Buscador de Proveedores y Catálogos Directos -->
             <form id="search-form" class="search-card">
                 <div class="input-group">
                     <label for="search-input" class="input-label">¿Qué producto o material necesitas?</label>
@@ -32,7 +33,7 @@
                             id="search-input" 
                             name="query" 
                             class="search-input" 
-                            placeholder="Escribe un producto, referencia o marca... ej. destornillador VDE, cinta aislante, alicaste"
+                            placeholder="Escribe un producto, referencia o marca... ej. memoria ram, crimpadora rj45, alicates, pantalon"
                             required
                             autocomplete="off"
                         >
@@ -43,28 +44,64 @@
                     <div class="filter-group">
                         <label for="category-select" class="filter-label">Categoría / Tipo de Proveedor</label>
                         <select id="category-select" name="category" class="filter-select">
-                            <option value="">Todas las categorías (Catálogo SVK)</option>
+                            <option value="">Todas las categorías (38 Proveedores SVK)</option>
                         </select>
                     </div>
                 </div>
 
                 <button type="submit" id="search-btn" class="btn-primary">
                     <span class="btn-text">Buscar Chollo 🔍</span>
-                    <span class="btn-spinner hidden"></span>
                 </button>
             </form>
+
+            <!-- Form 2: Extractor de Datos de Ficha de Producto por URL -->
+            <section class="search-card" style="margin-top: 24px; border: 1px solid rgba(147, 197, 253, 0.25); background: linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));">
+                <div class="input-group">
+                    <label for="product-url-input" class="input-label" style="color: #60a5fa; font-weight: 700; font-size: 1.05rem;">
+                        📋 Extraer Ficha de Producto para Informe / Compras
+                    </label>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
+                        Pega el enlace directo del producto (Decathlon, OBI, NAY, Stroje Slovensko, etc.) para generar automáticamente el Código, Referencia, Nomenclatura traducida y Precio con IVA.
+                    </p>
+                    <div class="input-wrapper">
+                        <span class="search-icon">🔗</span>
+                        <input 
+                            type="url" 
+                            id="product-url-input" 
+                            class="search-input" 
+                            placeholder="Pega aquí la URL completa del producto... ej: https://www.decathlon.sk/p/306560-..."
+                            autocomplete="off"
+                        >
+                    </div>
+                </div>
+
+                <button type="button" id="extract-btn" class="btn-primary" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); margin-top: 14px;">
+                    <span class="btn-text">⚡ Obtener Datos de Ficha</span>
+                </button>
+
+                <!-- Extracted Result Container -->
+                <div id="extracted-result-box" class="hidden" style="margin-top: 18px; padding: 18px; background: rgba(15, 23, 42, 0.95); border: 1px dashed rgba(96, 165, 250, 0.4); border-radius: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="color: var(--accent-green); font-weight: 700; font-size: 0.9rem;">✅ Ficha de Producto Generada:</span>
+                        <button type="button" id="copy-extracted-btn" class="btn-copy" style="background: var(--accent-blue); padding: 8px 14px; font-weight: 700;">
+                            📋 Copiar Ficha Completa
+                        </button>
+                    </div>
+                    <pre id="extracted-text" style="font-family: monospace; font-size: 0.95rem; color: #f8fafc; white-space: pre-wrap; word-break: break-word; background: #020617; padding: 14px; border-radius: 8px; margin: 0; line-height: 1.5;"></pre>
+                </div>
+            </section>
 
             <!-- Status Indicator -->
             <div id="status-bar" class="status-bar hidden">
                 <div class="status-content">
                     <span class="pulse-dot"></span>
-                    <span id="status-text">Buscando productos reales en tiendas eslovacas...</span>
+                    <span id="status-text">Procesando solicitud...</span>
                 </div>
             </div>
 
             <!-- Results Section -->
             <section id="results-container" class="results-section">
-                <!-- Direct result cards will be rendered here dynamically -->
+                <!-- Tarjetas dinámicas de proveedores -->
             </section>
         </main>
 
@@ -75,7 +112,7 @@
     </div>
 
     <!-- Notification Toast -->
-    <div id="toast" class="toast hidden">¡Ficha copiada al portapapeles! 📋</div>
+    <div id="toast" class="toast hidden">¡Copiado al portapapeles! 📋</div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
