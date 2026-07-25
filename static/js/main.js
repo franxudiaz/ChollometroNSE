@@ -46,6 +46,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!query) return;
 
+        // Limpiar URL de producto previamente pegada y su ficha al realizar una nueva búsqueda
+        if (productUrlInput) productUrlInput.value = '';
+        if (extractedResultBox) extractedResultBox.classList.add('hidden');
+        if (extractedText) extractedText.textContent = '';
+
         setLoadingState(true, `Traduciendo "${query}" al eslovaco y ordenando tiendas por e-commerce...`);
         resultsContainer.innerHTML = '';
 

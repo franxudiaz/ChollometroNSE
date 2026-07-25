@@ -162,17 +162,25 @@ body {
     text-decoration: none;
 }
 
-.logo-badge {
-    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
-    color: #ffffff;
-    font-size: 0.75rem;
-    font-weight: 800;
-    letter-spacing: 1.5px;
-    padding: 4px 12px;
-    border-radius: 20px;
+.logo-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     margin-bottom: 12px;
-    text-transform: uppercase;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.logo-img {
+    height: 75px;
+    width: auto;
+    max-width: 220px;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 16px rgba(59, 130, 246, 0.4));
+    transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.logo-img:hover {
+    transform: scale(1.04);
+    filter: drop-shadow(0 8px 22px rgba(59, 130, 246, 0.6));
 }
 
 .app-title {
