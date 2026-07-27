@@ -26,11 +26,26 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (ej: 21NU002CCK, 920-013033, 580-AKOX, 306560-136504).
+    Extrae la referencia/SKU exacta del fabricante por patrones de tienda (ej: 21R70021CK, MPG 491CQPX QD-OLED, 21NU002CCK, 920-013033, 580-AKOX, 306560-136504).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad 1: Código entre paréntesis en el título (ej: "(21NU002CCK)", "(920-013033)", "(580-AKOX)")
+    # 1. Prioridad Shoptet / Smart.sk / E-commerce: Buscar "item_id" o "code" o data-variant-code en el HTML
+    if html_text:
+        m_item_id = re.search(r'"item_id"\s*:\s*"([^"]+)"', html_text) or re.search(r'"code"\s*:\s*"([^"]+)"', html_text)
+        if m_item_id:
+            val = m_item_id.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
+                return val
+
+        # Código de producto / Kód produktu explícito
+        m_prod_code = re.search(r'(?:Código de producto|Kód produktu|Kód výrobcu|Číslo produktu)\s*:?\s*</?[^>]+>\s*([A-Z0-9\s\-_]{4,35})', html_text, re.IGNORECASE)
+        if m_prod_code:
+            val = m_prod_code.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
+                return val
+
+    # 2. Prioridad: Código entre paréntesis en el título (ej: "(21NU002CCK)", "(920-013033)", "(580-AKOX)")
     if title_sk:
         m_paren = re.search(r'\(([A-Z0-9\-_]{5,15})\)', title_sk, re.IGNORECASE)
         if m_paren:
@@ -38,35 +53,24 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
             if val.lower() not in RESERVED_JS_WORDS:
                 return val
 
-    # 2. Prioridad 2: Código en formato numérico/alfanumérico estándar en la URL
+    # 3. Código en formato numérico/alfanumérico estándar en la URL
     # a) Part Number Logitech / Decathlon (ej: 920-013033, 920-011590, 306560-136504)
     m_num_sku = re.search(r'(\d{3,6}-\d{5,8})', clean_url)
     if m_num_sku:
         return m_num_sku.group(1).upper()
 
-    # b) Código Lenovo / HP / Asus / Dell en la URL (ej: 21nu002cck, 580-akox)
-    m_part_url = re.search(r'-([a-z0-9]{8,12})(?:-[a-z]+|/|\.html|#|$)', clean_url, re.IGNORECASE) or \
+    # b) Código Lenovo / HP / Asus / Dell en la URL (ej: 21nu002cck, 21r70021ck, 580-akox)
+    m_part_url = re.search(r'-([a-z0-9]{8,14})(?:-[a-z]+|/|\.html|#|$)', clean_url, re.IGNORECASE) or \
                  re.search(r'-(\d{2}[a-z0-9]{6,10})-', clean_url, re.IGNORECASE)
     if m_part_url:
         val = m_part_url.group(1).upper()
         if val.lower() not in RESERVED_JS_WORDS and re.search(r'\d', val) and re.search(r'[A-Z]', val):
             return val
 
-    # 3. Fragmento Hash (#3679)
+    # 4. Fragmento Hash (#3679)
     if parsed.fragment and re.search(r'\d{3,}', parsed.fragment):
         m = re.search(r'(\d{3,})', parsed.fragment)
         return f"ID {m.group(1)}"
-
-    # 4. Buscar en el HTML por metadatos o Kód výrobcu
-    if html_text:
-        mpn_match = re.search(r'(?:Kód výrobcu|Kód|Part Number|MPN|SKU|Art\.?\s*č\.?)\s*:?\s*</?[^>]+>\s*([A-Z0-9\-_]{5,20})', html_text, re.IGNORECASE)
-        if mpn_match:
-            code_val = mpn_match.group(1).strip().upper()
-            # Si NAY le antepone 'LNV', intentar limpiar el prefijo interno de tienda
-            if code_val.startswith("LNV") and len(code_val) > 8:
-                code_val = code_val[3:]
-            if code_val.lower() not in RESERVED_JS_WORDS and len(code_val) >= 4:
-                return code_val
 
     # 5. Segmentos del path de la URL
     path = parsed.path.strip('/')
@@ -142,7 +146,7 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         referencia = extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk)
 
-        # Si la referencia está dentro del título entre paréntesis o guiones, la limpiamos del título para no duplicarla
+        # Si la referencia está dentro del título, limpiarla para no duplicarla
         if referencia and referencia in title_sk:
             clean_title_sk = title_sk.replace(f"({referencia})", "").replace(referencia, '').strip(' -()')
             if len(clean_title_sk) > 3:
@@ -167,29 +171,29 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
         
-        # a) Buscar 'Cena s DPH' contemplando etiquetas HTML intermedias
-        price_match = re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
-        if price_match:
-            p_val = price_match.group(1).strip().replace(" ", "")
-            price_formatted = p_val.replace('.', ',')
+        # a) Buscar en JSON-LD (Schema.org) o JS item_id/price
+        for s in soup.find_all('script', type='application/ld+json'):
+            if s.string:
+                try:
+                    js_data = json.loads(s.string)
+                    if isinstance(js_data, dict):
+                        offers = js_data.get('offers', {})
+                        if isinstance(offers, list) and len(offers) > 0:
+                            offers = offers[0]
+                        if isinstance(offers, dict):
+                            p_num = offers.get('price') or offers.get('lowPrice')
+                            if p_num:
+                                price_formatted = str(p_num).replace('.', ',')
+                                break
+                except Exception:
+                    pass
 
-        # b) Buscar en JSON-LD (Schema.org)
+        # b) Buscar 'Cena s DPH' contemplando etiquetas HTML intermedias
         if not price_formatted:
-            for s in soup.find_all('script', type='application/ld+json'):
-                if s.string:
-                    try:
-                        js_data = json.loads(s.string)
-                        if isinstance(js_data, dict):
-                            offers = js_data.get('offers', {})
-                            if isinstance(offers, list) and len(offers) > 0:
-                                offers = offers[0]
-                            if isinstance(offers, dict):
-                                p_num = offers.get('price') or offers.get('lowPrice')
-                                if p_num:
-                                    price_formatted = str(p_num).replace('.', ',')
-                                    break
-                    except Exception:
-                        pass
+            price_match = re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
+            if price_match:
+                p_val = price_match.group(1).strip().replace(" ", "")
+                price_formatted = p_val.replace('.', ',')
 
         # c) Buscar en Meta Tags
         if not price_formatted:
