@@ -29,13 +29,13 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: Objednávací kód / Código de pedido (ej: 29491002, LNZGXY1P72611S)
+    # 1. Prioridad Absoluta HTML: Obj.číslo / Objednávací kód / Código de pedido (ej: 4933396392, 29491002, LNZGXY1P72611S)
     if html_text:
-        m_order_code = re.search(r'(?:Objedn[^\s]+ k[oó]d|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\-_]{4,25})', html_text, re.IGNORECASE)
+        m_order_code = re.search(r'(?:Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\-_]{4,25})', html_text, re.IGNORECASE)
         if m_order_code:
             val = m_order_code.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
@@ -69,7 +69,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     if m_num_sku:
         return m_num_sku.group(1).upper()
 
-    # b) Código Lenovo / HP / Asus / Dell / Agharta en la URL
+    # b) Código Lenovo / HP / Asus / Dell / Hyriak en la URL
     m_part_url = re.search(r'-([a-z0-9]{8,14})(?:-[a-z]+|/|\.html|#|$)', clean_url, re.IGNORECASE) or \
                  re.search(r'-(\d{2}[a-z0-9]{6,10})-', clean_url, re.IGNORECASE)
     if m_part_url:
@@ -82,7 +82,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
         m = re.search(r'(\d{3,})', parsed.fragment)
         return f"ID {m.group(1)}"
 
-    # 5. Segmentos del path de la URL
+    # 5. Segmentos del path de la URL (ej: /4312)
     path = parsed.path.strip('/')
     parts = path.split('/')
     for p in reversed(parts):
@@ -90,7 +90,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
         if m1 and m1.group(1).lower() not in RESERVED_JS_WORDS:
             return m1.group(1).upper()
             
-        m2 = re.search(r'-(\d{5,12})(?:-|\.html|#|$)', p) or re.search(r'/p/(\d{5,12})', clean_url) or re.search(r'(\d{6,12})', p)
+        m2 = re.search(r'-(\d{5,12})(?:-|\.html|#|$)', p) or re.search(r'/p/(\d{5,12})', clean_url) or re.search(r'(\d{4,12})', p)
         if m2:
             code = m2.group(1)
             return f"ID {code}" if len(code) < 8 else code
@@ -149,7 +149,7 @@ def extract_product_data(url):
             title_sk = path_parts[-1].replace('-', ' ').replace('.html', '').capitalize() if path_parts else "Producto"
 
         # Limpiar marcas comerciales en el título
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
@@ -177,64 +177,73 @@ def extract_product_data(url):
         nomenclatura = f"{title_es} / {title_sk}"
 
         # -------------------------------------------------------------
-        # 4. IMPORTE UNITARIO (CON IVA EN EUROS - SIEMPRE LA CANTIDAD MAYOR)
+        # 4. IMPORTE UNITARIO (CON IVA EN EUROS - PRECIO ACTUALIZADO CON IVA)
         # -------------------------------------------------------------
-        found_prices = []
+        price_formatted = ""
 
-        # a) Buscar 'Cena s DPH' / 'Precio con IVA'
-        price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
-        if price_match:
-            try:
-                val = float(price_match.group(1).strip().replace(" ", "").replace(',', '.'))
-                if val > 0: found_prices.append(val)
-            except Exception:
-                pass
-
-        # b) Buscar en JSON-LD (Schema.org)
-        for s in soup.find_all('script', type='application/ld+json'):
-            if s.string:
-                try:
-                    js_data = json.loads(s.string)
-                    if isinstance(js_data, dict):
-                        offers = js_data.get('offers', {})
-                        if isinstance(offers, list) and len(offers) > 0:
-                            offers = offers[0]
-                        if isinstance(offers, dict):
-                            p_num = offers.get('price') or offers.get('lowPrice')
-                            if p_num:
-                                val = float(str(p_num).replace(',', '.'))
-                                if val > 0: found_prices.append(val)
-                except Exception:
-                    pass
-
-        # c) Buscar en Meta Tags
-        price_meta = soup.find('meta', property='product:price:amount') or \
-                     soup.find('meta', attrs={'itemprop': 'price'}) or \
+        # a) Meta tag explicit itemprop="price" / product:price:amount (Precio oficial con IVA de la tienda)
+        price_meta = soup.find('meta', attrs={'itemprop': 'price'}) or \
+                     soup.find('meta', property='product:price:amount') or \
                      soup.find('meta', attrs={'name': 'price'}) or \
                      soup.find('meta', property='og:price:amount')
         
         if price_meta and price_meta.get('content'):
             try:
                 val = float(price_meta['content'].strip().replace(',', '.'))
-                if val > 0: found_prices.append(val)
+                if val > 0:
+                    price_formatted = f"{val:.2f}".replace('.', ',')
             except Exception:
                 pass
 
-        # d) Buscar por clases CSS e importes generales en el HTML
-        for p_match in re.finditer(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)', html_text, re.IGNORECASE):
-            try:
-                p_clean = p_match.group(1).replace('&nbsp;', '').replace(' ', '').replace(',', '.')
-                val = float(p_clean)
-                if 0.1 <= val <= 50000:
-                    found_prices.append(val)
-            except Exception:
-                pass
+        # b) JSON-LD (Schema.org)
+        if not price_formatted:
+            for s in soup.find_all('script', type='application/ld+json'):
+                if s.string:
+                    try:
+                        js_data = json.loads(s.string)
+                        if isinstance(js_data, dict):
+                            offers = js_data.get('offers', {})
+                            if isinstance(offers, list) and len(offers) > 0:
+                                offers = offers[0]
+                            if isinstance(offers, dict):
+                                p_num = offers.get('price') or offers.get('lowPrice')
+                                if p_num:
+                                    val = float(str(p_num).replace(',', '.'))
+                                    if val > 0:
+                                        price_formatted = f"{val:.2f}".replace('.', ',')
+                                        break
+                    except Exception:
+                        pass
 
-        if found_prices:
-            # Seleccionar SIEMPRE la cantidad mayor de precio (Precio con IVA)
-            max_price = max(found_prices)
-            price_formatted = f"{max_price:.2f}".replace('.', ',')
-        else:
+        # c) Buscar elementos de precio en HTML excluyendo elementos tachados (del, s, old-price)
+        if not price_formatted:
+            # Eliminar etiquetas de precios antiguos tachados de la sopa HTML
+            for old in soup.find_all(['del', 's', 'strike'], class_=re.compile(r'old|original|crossed|strikethrough', re.I)):
+                old.decompose()
+
+            found_prices = []
+            price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
+            if price_match:
+                try:
+                    val = float(price_match.group(1).strip().replace(" ", "").replace(',', '.'))
+                    if val > 0: found_prices.append(val)
+                except Exception:
+                    pass
+
+            for p_match in re.finditer(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE):
+                try:
+                    p_clean = p_match.group(1).replace('&nbsp;', '').replace(' ', '').replace(',', '.')
+                    val = float(p_clean)
+                    if 0.1 <= val <= 50000:
+                        found_prices.append(val)
+                except Exception:
+                    pass
+
+            if found_prices:
+                max_price = max(found_prices)
+                price_formatted = f"{max_price:.2f}".replace('.', ',')
+
+        if not price_formatted:
             price_formatted = "Consultar en tienda online (€)"
 
         # Formato final exacto solicitado por el usuario
