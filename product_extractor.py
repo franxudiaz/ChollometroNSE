@@ -22,45 +22,60 @@ HEADERS = {
     'Upgrade-Insecure-Requests': '1'
 }
 
-RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "nohavice", "klavesnica"}
+RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "nohavice", "klavesnica", "notebook", "edition", "sivy", "cierna"}
 
-def extract_sku_from_text_or_url(clean_url, html_text, codigo):
+def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae con máxima precisión la referencia/SKU real del producto (priorizando códigos del fabricante como 920-013033, 920-011590, 580-AKOX, 306560-136504).
+    Extrae la referencia/SKU exacta del fabricante (ej: 21NU002CCK, 920-013033, 580-AKOX, 306560-136504).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta: Formato SKU numérico de fabricante (ej: 920-013033, 920-011590, 306560-136504, 580-AKOX) en URL
+    # 1. Prioridad 1: Código entre paréntesis en el título (ej: "(21NU002CCK)", "(920-013033)", "(580-AKOX)")
+    if title_sk:
+        m_paren = re.search(r'\(([A-Z0-9\-_]{5,15})\)', title_sk, re.IGNORECASE)
+        if m_paren:
+            val = m_paren.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS:
+                return val
+
+    # 2. Prioridad 2: Código en formato numérico/alfanumérico estándar en la URL
+    # a) Part Number Logitech / Decathlon (ej: 920-013033, 920-011590, 306560-136504)
     m_num_sku = re.search(r'(\d{3,6}-\d{5,8})', clean_url)
     if m_num_sku:
         return m_num_sku.group(1).upper()
 
-    # 2. Fragmento Hash (#3679)
+    # b) Código Lenovo / HP / Asus / Dell en la URL (ej: 21nu002cck, 580-akox)
+    m_part_url = re.search(r'-([a-z0-9]{8,12})(?:-[a-z]+|/|\.html|#|$)', clean_url, re.IGNORECASE) or \
+                 re.search(r'-(\d{2}[a-z0-9]{6,10})-', clean_url, re.IGNORECASE)
+    if m_part_url:
+        val = m_part_url.group(1).upper()
+        if val.lower() not in RESERVED_JS_WORDS and re.search(r'\d', val) and re.search(r'[A-Z]', val):
+            return val
+
+    # 3. Fragmento Hash (#3679)
     if parsed.fragment and re.search(r'\d{3,}', parsed.fragment):
         m = re.search(r'(\d{3,})', parsed.fragment)
         return f"ID {m.group(1)}"
-        
+
+    # 4. Buscar en el HTML por metadatos o Kód výrobcu
+    if html_text:
+        mpn_match = re.search(r'(?:Kód výrobcu|Kód|Part Number|MPN|SKU|Art\.?\s*č\.?)\s*:?\s*</?[^>]+>\s*([A-Z0-9\-_]{5,20})', html_text, re.IGNORECASE)
+        if mpn_match:
+            code_val = mpn_match.group(1).strip().upper()
+            # Si NAY le antepone 'LNV', intentar limpiar el prefijo interno de tienda
+            if code_val.startswith("LNV") and len(code_val) > 8:
+                code_val = code_val[3:]
+            if code_val.lower() not in RESERVED_JS_WORDS and len(code_val) >= 4:
+                return code_val
+
+    # 5. Segmentos del path de la URL
     path = parsed.path.strip('/')
     parts = path.split('/')
-    
-    # 3. Buscar en el HTML por metadatos o texto explícito (Kód výrobcu / Code / SKU)
-    if html_text:
-        # p.ej: Kód výrobcu: 920-013033 o Part Number / MPN
-        mpn_match = re.search(r'(?:Kód výrobcu|Kód|Part Number|MPN|SKU|Art\.?\s*č\.?)\s*:?\s*</?[^>]+>\s*([A-Z0-9\-_]{4,20})', html_text, re.IGNORECASE) or \
-                    re.search(r'(?:Kód výrobcu|Kód|Part Number|MPN|SKU|Art\.?\s*č\.?)\s*:?\s*([A-Z0-9\-_]{4,20})', html_text, re.IGNORECASE)
-        if mpn_match:
-            code_val = mpn_match.group(1).strip()
-            if code_val.lower() not in RESERVED_JS_WORDS and len(code_val) >= 4:
-                return code_val.upper()
-
-    # 4. Buscar códigos numéricos o alfanuméricos en el path de la URL
     for p in reversed(parts):
-        # Alfanumérico tipo 580-AKOX
         m1 = re.search(r'(\d{3,6}-[A-Za-z0-9]{3,8})', p)
         if m1 and m1.group(1).lower() not in RESERVED_JS_WORDS:
             return m1.group(1).upper()
             
-        # Código numérico directo largo (ej: 4932492462, 4007875, 8666242)
         m2 = re.search(r'-(\d{5,12})(?:-|\.html|#|$)', p) or re.search(r'/p/(\d{5,12})', clean_url) or re.search(r'(\d{6,12})', p)
         if m2:
             code = m2.group(1)
@@ -84,7 +99,6 @@ def extract_product_data(url):
     domain_clean = parsed.netloc.lower().replace("www.", "")
     codigo = domain_clean.split('.')[0].lower() or "tienda"
 
-    # Preparar cabeceras con Referer dinámico del propio dominio
     req_headers = HEADERS.copy()
     req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
 
@@ -126,9 +140,9 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE
         # -------------------------------------------------------------
-        referencia = extract_sku_from_text_or_url(clean_url, html_text, codigo)
+        referencia = extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk)
 
-        # Si la referencia está dentro del título, limpiarla para no duplicarla
+        # Si la referencia está dentro del título entre paréntesis o guiones, la limpiamos del título para no duplicarla
         if referencia and referencia in title_sk:
             clean_title_sk = title_sk.replace(f"({referencia})", "").replace(referencia, '').strip(' -()')
             if len(clean_title_sk) > 3:
@@ -153,7 +167,7 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
         
-        # a) Buscar 'Cena s DPH' contemplando etiquetas HTML intermedias (ej. NAY: <span class="sr-only">Cena s DPH: </span> 109,90 €)
+        # a) Buscar 'Cena s DPH' contemplando etiquetas HTML intermedias
         price_match = re.search(r'Cena\s*(?:s\s*DPH)?\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
         if price_match:
             p_val = price_match.group(1).strip().replace(" ", "")
@@ -228,7 +242,7 @@ def generate_fallback_result(url, codigo, default_title):
     parsed = urlparse(url)
     slug = unquote(parsed.path.strip('/').split('/')[-1]).replace('.html', '')
 
-    referencia = extract_sku_from_text_or_url(url, "", codigo)
+    referencia = extract_sku_from_text_or_url(url, "", codigo, "")
     if referencia and "REF-" not in referencia:
         slug = slug.replace(referencia.replace("ID ", ""), "").strip('-')
 
