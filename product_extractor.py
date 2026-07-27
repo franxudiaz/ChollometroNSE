@@ -6,6 +6,9 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse, unquote
 from deep_translator import GoogleTranslator
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -101,13 +104,13 @@ def extract_product_data(url):
 
     parsed = urlparse(clean_url)
     domain_clean = parsed.netloc.lower().replace("www.", "")
-    codigo = domain_clean.split('.')[0].lower() or "tienda"
+    codigo = "agharta" if "agharta" in domain_clean else (domain_clean.split('.')[0].lower() or "tienda")
 
     req_headers = HEADERS.copy()
     req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
 
     try:
-        r = requests.get(clean_url, headers=req_headers, timeout=8)
+        r = requests.get(clean_url, headers=req_headers, timeout=8, verify=False)
         if r.status_code != 200:
             logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}")
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")

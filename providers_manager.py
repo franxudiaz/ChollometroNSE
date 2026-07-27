@@ -219,7 +219,7 @@ class ProvidersManager:
         elif "promodesign.sk" in domain:
             return f"http://www.promodesign.sk/?s={term_encoded}"
         elif "agharta.sk" in domain:
-            return f"https://www.agharta.sk/?s={term_encoded}"
+            return f"https://eshop.agharta.sk/zbozi?zb={term_encoded}"
         elif "metro.sk" in domain:
             return f"https://www.metro.sk/vyhladavanie?q={term_encoded}"
         elif "posta.sk" in domain:
