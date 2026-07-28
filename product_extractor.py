@@ -158,7 +158,7 @@ def extract_product_data(url):
 
         # Limpiar kód: 60551001 y marcas comerciales del título
         title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
@@ -192,20 +192,25 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
 
+        # Verificar si la tienda exige registro previo para mostrar el precio (ej: Hagard HAL: "Cena sa zobrazí až po prihlásení")
+        if re.search(r'po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE) or re.search(r'prihl[aá]sen[ií]', html_text, re.IGNORECASE):
+            price_formatted = "Necesario registro para ver precio"
+
         # a) E-Commerce WooCommerce (ej: Vercajch) -> Contenedor p.price -> primer woocommerce-Price-amount
-        price_p = soup.find('p', class_='price')
-        if price_p:
-            for wo_tax in price_p.find_all(class_='content-product-price-wo-tax'):
-                wo_tax.decompose()
-            amt_span = price_p.find(class_='woocommerce-Price-amount')
-            if amt_span:
-                try:
-                    p_txt = amt_span.get_text().replace('€', '').replace(' ', '').replace(',', '.').strip()
-                    val = float(p_txt)
-                    if val > 0:
-                        price_formatted = f"{val:.2f}".replace('.', ',')
-                except Exception:
-                    pass
+        if not price_formatted:
+            price_p = soup.find('p', class_='price')
+            if price_p:
+                for wo_tax in price_p.find_all(class_='content-product-price-wo-tax'):
+                    wo_tax.decompose()
+                amt_span = price_p.find(class_='woocommerce-Price-amount')
+                if amt_span:
+                    try:
+                        p_txt = amt_span.get_text().replace('€', '').replace(' ', '').replace(',', '.').strip()
+                        val = float(p_txt)
+                        if val > 0:
+                            price_formatted = f"{val:.2f}".replace('.', ',')
+                    except Exception:
+                        pass
 
         # b) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 14.60€ s DPH)
         if not price_formatted:
@@ -333,6 +338,6 @@ Importe unitario (con iva): Consultar en tienda online (€)"""
         "title_es": title_es,
         "title_sk": title_sk,
         "importe_unitario": "Consultar en tienda online (€)",
-        "formatted_text": formatted_text,
+        "formatted_text": formatted_result,
         "url": url
     }
