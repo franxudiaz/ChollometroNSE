@@ -26,7 +26,7 @@ ECOMMERCE_PROVIDERS = [
     "smart computer", "xepap", "toner servis", "obi", "vercajch", "decathlon", "nay", 
     "autotechna", "outland", "stroje slovensko", "valtec", "hyriak", "vkp steel", 
     "copper", "hagard", "benu lekaren", "ikea", "jysk", "technopack", "t-tech", 
-    "autopiko", "kapex", "gatial", "scandi", "agharta", "army shop"
+    "technikzv", "autopiko", "kapex", "gatial", "scandi", "agharta", "army shop"
 ]
 
 def find_excel_file():
@@ -205,7 +205,7 @@ class ProvidersManager:
         elif "ibv.sk" in domain or "stavivo" in domain:
             return f"https://eshop.ibv.sk/?s={term_encoded}"
         elif "technikzv.sk" in domain:
-            return f"http://technikzv.sk/?s={term_encoded}"
+            return f"https://technikzv.sk/?s={term_encoded}"
         elif "jales.sk" in domain:
             return f"https://jales.sk/?s={term_encoded}"
         elif "gatial.sk" in domain:
