@@ -56,8 +56,9 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 1:
                 return val
 
-        # Copper.sk / E-Commerce kód: 60551001
-        m_kod_simple = re.search(r'k[oó]d\s*:\s*([A-Z0-9\-_]{3,25})', html_text, re.IGNORECASE)
+        # Copper.sk / E-Commerce / Stavivo IBV kód: 60551001, DMP180Z, DTD153Z
+        m_kod_simple = re.search(r'k[oó]d\s*:\s*([A-Z0-9\-_]{3,25})', html_text, re.IGNORECASE) or \
+                       re.search(r'>\s*K[oó]d\s*<\s*/[^>]+>\s*<\s*[^>]+>\s*([A-Z0-9\-_]{3,25})\s*<', html_text, re.IGNORECASE)
         if m_kod_simple:
             val = m_kod_simple.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS:
@@ -140,7 +141,17 @@ def extract_product_data(url):
 
     parsed = urlparse(clean_url)
     domain_clean = parsed.netloc.lower().replace("www.", "")
-    codigo = "agharta" if "agharta" in domain_clean else ("vkpsteel" if "vkpsteel" in domain_clean else ("hansa-flex" if "hansa-flex" in domain_clean else (domain_clean.split('.')[0].lower() or "tienda")))
+    
+    if "agharta" in domain_clean:
+        codigo = "agharta"
+    elif "vkpsteel" in domain_clean:
+        codigo = "vkpsteel"
+    elif "ibv" in domain_clean or "stavivo" in domain_clean:
+        codigo = "stavivo"
+    elif "hansa-flex" in domain_clean:
+        codigo = "hansa-flex"
+    else:
+        codigo = domain_clean.split('.')[0].lower() or "tienda"
 
     req_headers = HEADERS.copy()
     req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
@@ -179,7 +190,7 @@ def extract_product_data(url):
 
         # Limpiar kód: 60551001 y marcas comerciales del título
         title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
@@ -213,8 +224,8 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
 
-        # Verificar si la tienda exige registro previo o es venta bajo catálogo sin precio público (ej: Hansa-Flex, Gufero, Stavebniny Dado)
-        if re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
+        # Verificar si la tienda exige registro previo (ej: Hagard HAL, Stavivo IBV: "Cena po prihlásení")
+        if re.search(r'po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE) or re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
             price_formatted = "Necesario registro para ver precio"
         elif "gufero" in domain_clean or "stavebninydado" in domain_clean or "hansa-flex" in domain_clean or "gufero.sk" in clean_url or "stavebninydado.sk" in clean_url or "hansa-flex.sk" in clean_url:
             price_formatted = "Venta bajo catálogo (sin precios públicos)"

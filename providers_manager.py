@@ -203,7 +203,7 @@ class ProvidersManager:
         elif "faxacopy.sk" in domain:
             return "https://www.faxacopy.sk/cennik/"
         elif "ibv.sk" in domain or "stavivo" in domain:
-            return f"http://www.ibv.sk/?s={term_encoded}"
+            return f"https://eshop.ibv.sk/?s={term_encoded}"
         elif "technikzv.sk" in domain:
             return f"http://technikzv.sk/?s={term_encoded}"
         elif "jales.sk" in domain:
