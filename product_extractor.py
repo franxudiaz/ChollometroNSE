@@ -29,12 +29,19 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando product-reference, kód: , Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando Interný kód, product-reference, kód: , Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: PrestaShop product-reference, kód: , PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
+    # 1. Prioridad Absoluta HTML: Interný kód, PrestaShop product-reference, kód: , PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
+        # Autotechna / E-Commerce Interný kód: MOL13300126, NEO11-102
+        m_int_code = re.search(r'Intern[yý]\s*k[oó]d\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\-_]{3,30})', html_text, re.IGNORECASE)
+        if m_int_code:
+            val = m_int_code.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS:
+                return val
+
         # PrestaShop product-reference (ej: Truckershop <div class="product-reference"><label class="label">Kód </label><span>04729</span></div>)
         m_ps_class = re.search(r'class=["\']product-reference["\'][^>]*>\s*<label[^>]*>[^<]*</label>\s*<span>([^<]+)</span>', html_text, re.IGNORECASE)
         if m_ps_class:
@@ -200,10 +207,22 @@ def extract_product_data(url):
         price_formatted = ""
 
         # Verificar si la tienda exige registro previo para mostrar el precio (ej: Hagard HAL: "Cena sa zobrazí až po prihlásení")
-        if re.search(r'po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE) or re.search(r'prihl[aá]sen[ií]', html_text, re.IGNORECASE):
+        if re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
             price_formatted = "Necesario registro para ver precio"
 
-        # a) E-Commerce WooCommerce (ej: Vercajch) -> Contenedor p.price -> primer woocommerce-Price-amount
+        # a) Elemento priceValue (ej: Autotechna <span class='priceValue'>78,24</span>)
+        if not price_formatted:
+            pv = soup.find(class_='priceValue')
+            if pv:
+                try:
+                    p_txt = pv.get_text(strip=True).replace('€', '').replace(' ', '').replace(',', '.').strip()
+                    val = float(p_txt)
+                    if val > 0:
+                        price_formatted = f"{val:.2f}".replace('.', ',')
+                except Exception:
+                    pass
+
+        # b) E-Commerce WooCommerce (ej: Vercajch) -> Contenedor p.price -> primer woocommerce-Price-amount
         if not price_formatted:
             price_p = soup.find('p', class_='price')
             if price_p:
@@ -219,7 +238,7 @@ def extract_product_data(url):
                     except Exception:
                         pass
 
-        # b) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 14.60€ s DPH)
+        # c) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 14.60€ s DPH)
         if not price_formatted:
             price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE) or \
                           re.search(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*€\s*(?:s\s*DPH|Con\s*IVA)', html_text, re.IGNORECASE)
@@ -232,7 +251,7 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # c) Meta tag explicit itemprop="price" / product:price:amount
+        # d) Meta tag explicit itemprop="price" / product:price:amount
         if not price_formatted:
             price_meta = soup.find('meta', attrs={'itemprop': 'price'}) or \
                          soup.find('meta', property='product:price:amount') or \
@@ -247,7 +266,7 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # d) JSON-LD (Schema.org)
+        # e) JSON-LD (Schema.org)
         if not price_formatted:
             for s in soup.find_all('script', type='application/ld+json'):
                 if s.string:
@@ -267,7 +286,7 @@ def extract_product_data(url):
                     except Exception:
                         pass
 
-        # e) Buscar elementos de precio en HTML excluyendo elementos tachados
+        # f) Buscar elementos de precio en HTML excluyendo elementos tachados
         if not price_formatted:
             for old in soup.find_all(['del', 's', 'strike'], class_=re.compile(r'old|original|crossed|strikethrough', re.I)):
                 old.decompose()
@@ -345,6 +364,6 @@ Importe unitario (con iva): Consultar en tienda online (€)"""
         "title_es": title_es,
         "title_sk": title_sk,
         "importe_unitario": "Consultar en tienda online (€)",
-        "formatted_text": formatted_result,
+        "formatted_text": formatted_text,
         "url": url
     }
