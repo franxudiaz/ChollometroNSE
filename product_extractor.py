@@ -29,13 +29,21 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando Kód, reference, Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: Kód produktu / Katalógové číslo / Obj.číslo / Objednávací kód / Código de pedido
+    # 1. Prioridad Absoluta HTML: PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
-        m_prod_code = re.search(r'(?:Código de producto|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{1,40})', html_text, re.IGNORECASE)
+        # PrestaShop / VKP Steel: "reference":"11FRIUL05030" o itemprop="gtin13"
+        m_ps_ref = re.search(r'"reference"\s*:\s*"([^"]+)"', html_text) or \
+                   re.search(r'itemprop=["\'](?:gtin13|sku)["\']\s+content=["\']([^"\']+)["\']', html_text)
+        if m_ps_ref:
+            val = m_ps_ref.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 2:
+                return val
+
+        m_prod_code = re.search(r'(?:Código de producto|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+|K[oó]d|C[oó]digo)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{1,40})', html_text, re.IGNORECASE)
         if m_prod_code:
             val = m_prod_code.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 1:
@@ -57,7 +65,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
                 return val
 
     # 3. Código en formato numérico/alfanumérico estándar en la URL
-    # a) Part Number Logitech / Decathlon / Milwaukee / Valtec (ej: 4932478654, 920-013033, 920-011590, 306560-136504)
+    # a) Part Number Logitech / Decathlon / Milwaukee / Valtec / VKP (ej: 4932478654, 920-013033, 920-011590, 306560-136504)
     m_num_sku = re.search(r'(\d{3,6}-\d{5,8})', clean_url)
     if m_num_sku:
         return m_num_sku.group(1).upper()
@@ -104,7 +112,7 @@ def extract_product_data(url):
 
     parsed = urlparse(clean_url)
     domain_clean = parsed.netloc.lower().replace("www.", "")
-    codigo = "agharta" if "agharta" in domain_clean else (domain_clean.split('.')[0].lower() or "tienda")
+    codigo = "agharta" if "agharta" in domain_clean else ("vkpsteel" if "vkpsteel" in domain_clean else (domain_clean.split('.')[0].lower() or "tienda"))
 
     req_headers = HEADERS.copy()
     req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
@@ -142,7 +150,7 @@ def extract_product_data(url):
             title_sk = path_parts[-1].replace('-', ' ').replace('.html', '').capitalize() if path_parts else "Producto"
 
         # Limpiar marcas comerciales en el título
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
@@ -179,7 +187,6 @@ def extract_product_data(url):
         # a) E-Commerce WooCommerce (ej: Vercajch) -> Contenedor p.price -> primer woocommerce-Price-amount
         price_p = soup.find('p', class_='price')
         if price_p:
-            # Eliminar sub-precios 'bez DPH' de la búsqueda
             for wo_tax in price_p.find_all(class_='content-product-price-wo-tax'):
                 wo_tax.decompose()
             amt_span = price_p.find(class_='woocommerce-Price-amount')
@@ -192,10 +199,10 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # b) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' (soporta €38,28 o 38,28 € s DPH / ks / bal / kg / pár)
+        # b) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 0,06 € Con IVA / S DPH)
         if not price_formatted:
             price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE) or \
-                          re.search(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*€\s*s\s*DPH', html_text, re.IGNORECASE)
+                          re.search(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*€\s*(?:s\s*DPH|Con\s*IVA)', html_text, re.IGNORECASE)
             
             if price_match:
                 try:
@@ -246,11 +253,11 @@ def extract_product_data(url):
                 old.decompose()
 
             found_prices = []
-            for p_match in re.finditer(r'€?\s*([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)?\s*(?:s\s*DPH)?', html_text, re.IGNORECASE):
+            for p_match in re.finditer(r'€?\s*([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)?\s*(?:s\s*DPH|Con\s*IVA)?', html_text, re.IGNORECASE):
                 try:
                     p_clean = p_match.group(1).replace('&nbsp;', '').replace(' ', '').replace(',', '.')
                     val = float(p_clean)
-                    if 0.1 <= val <= 50000:
+                    if 0.01 <= val <= 50000:
                         found_prices.append(val)
                 except Exception:
                     pass
