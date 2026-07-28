@@ -29,15 +29,15 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: Katalógové číslo / Obj.číslo / Objednávací kód / Código de pedido
+    # 1. Prioridad Absoluta HTML: Kód produktu / Katalógové číslo / Obj.číslo / Objednávací kód / Código de pedido
     if html_text:
-        m_order_code = re.search(r'(?:Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\-_]{4,25})', html_text, re.IGNORECASE)
-        if m_order_code:
-            val = m_order_code.group(1).strip().upper()
+        m_prod_code = re.search(r'(?:Código de producto|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{4,40})', html_text, re.IGNORECASE)
+        if m_prod_code:
+            val = m_prod_code.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
                 return val
 
@@ -45,13 +45,6 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
         m_item_id = re.search(r'"item_id"\s*:\s*"([^"]+)"', html_text) or re.search(r'"code"\s*:\s*"([^"]+)"', html_text)
         if m_item_id:
             val = m_item_id.group(1).strip().upper()
-            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
-                return val
-
-        # Kód produktu / Kód výrobcu
-        m_prod_code = re.search(r'(?:Código de producto|Kód produktu|Kód výrobcu|Číslo produktu)\s*:?\s*</?[^>]+>\s*([A-Z0-9\s\-_]{4,35})', html_text, re.IGNORECASE)
-        if m_prod_code:
-            val = m_prod_code.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
                 return val
 
@@ -64,12 +57,12 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
                 return val
 
     # 3. Código en formato numérico/alfanumérico estándar en la URL
-    # a) Part Number Logitech / Decathlon (ej: 920-013033, 920-011590, 306560-136504)
+    # a) Part Number Logitech / Decathlon / Milwaukee / Valtec (ej: 4932478654, 920-013033, 920-011590, 306560-136504)
     m_num_sku = re.search(r'(\d{3,6}-\d{5,8})', clean_url)
     if m_num_sku:
         return m_num_sku.group(1).upper()
 
-    # b) Código Lenovo / HP / Asus / Dell / Stroje Slovensko en la URL
+    # b) Código Lenovo / HP / Asus / Dell / Valtec en la URL
     m_part_url = re.search(r'-([a-z0-9]{8,14})(?:-[a-z]+|/|\.html|#|$)', clean_url, re.IGNORECASE) or \
                  re.search(r'-(\d{2}[a-z0-9]{6,10})-', clean_url, re.IGNORECASE)
     if m_part_url:
@@ -158,9 +151,9 @@ def extract_product_data(url):
 
         # Si la referencia está dentro del título, limpiarla para no duplicarla
         if referencia and referencia in title_sk:
-            clean_title_sk = title_sk.replace(f"({referencia})", "").replace(referencia, '').strip(' -()')
-            if len(clean_title_sk) > 3:
-                title_sk = clean_title_sk
+            title_sk = title_sk.replace(f"({referencia})", "").replace(f"/{referencia}/", "").replace(referencia, '').strip(' -()/:')
+
+        title_sk = re.sub(r'/[0-9A-Z\-_]+/?$', '', title_sk, flags=re.IGNORECASE).strip(' -()/:')
 
         # -------------------------------------------------------------
         # 3. TRADUCCIÓN AL ESPAÑOL (Title ES)
@@ -174,6 +167,8 @@ def extract_product_data(url):
             except Exception:
                 pass
 
+        title_es = title_es.strip(' -()/:')
+        title_sk = title_sk.strip(' -()/:')
         nomenclatura = f"{title_es} / {title_sk}"
 
         # -------------------------------------------------------------
@@ -181,8 +176,10 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
 
-        # a) Buscar 'Cena s DPH' / 'Precio con IVA' (soporta €112,46 o 112,46 €)
-        price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE)
+        # a) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' (soporta €38,28 o 38,28 € s DPH / ks / bal / kg / pár)
+        price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE) or \
+                      re.search(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*€\s*s\s*DPH', html_text, re.IGNORECASE)
+        
         if price_match:
             try:
                 val = float(price_match.group(1).strip().replace(" ", "").replace(',', '.'))
@@ -304,6 +301,6 @@ Importe unitario (con iva): Consultar en tienda online (€)"""
         "title_es": title_es,
         "title_sk": title_sk,
         "importe_unitario": "Consultar en tienda online (€)",
-        "formatted_text": formatted_text,
+        "formatted_text": formatted_result,
         "url": url
     }
