@@ -23,7 +23,7 @@ KEY_KEYWORDS = ["llave", "llaves", "cilindro", "candado", "cerradura", "kľúč"
 
 # Lista de proveedores que disponen de tienda e-commerce directa con precios en vivo
 ECOMMERCE_PROVIDERS = [
-    "smart computer", "xepap", "toner servis", "obi", "vercajch", "decathlon", "nay", 
+    "smart computer", "xepap", "obi", "vercajch", "decathlon", "nay", 
     "autotechna", "outland", "stroje slovensko", "valtec", "hyriak", "vkp steel", 
     "copper", "hagard", "benu lekaren", "ikea", "jysk", "technopack", "t-tech", 
     "technikzv", "autopiko", "kapex", "gatial", "scandi", "agharta", "army shop"
