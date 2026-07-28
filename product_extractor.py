@@ -29,13 +29,13 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: Obj.číslo / Objednávací kód / Código de pedido (ej: 4933396392, 29491002, LNZGXY1P72611S)
+    # 1. Prioridad Absoluta HTML: Katalógové číslo / Obj.číslo / Objednávací kód / Código de pedido
     if html_text:
-        m_order_code = re.search(r'(?:Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\-_]{4,25})', html_text, re.IGNORECASE)
+        m_order_code = re.search(r'(?:Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\-_]{4,25})', html_text, re.IGNORECASE)
         if m_order_code:
             val = m_order_code.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 4:
@@ -69,7 +69,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     if m_num_sku:
         return m_num_sku.group(1).upper()
 
-    # b) Código Lenovo / HP / Asus / Dell / Hyriak en la URL
+    # b) Código Lenovo / HP / Asus / Dell / Stroje Slovensko en la URL
     m_part_url = re.search(r'-([a-z0-9]{8,14})(?:-[a-z]+|/|\.html|#|$)', clean_url, re.IGNORECASE) or \
                  re.search(r'-(\d{2}[a-z0-9]{6,10})-', clean_url, re.IGNORECASE)
     if m_part_url:
@@ -82,7 +82,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
         m = re.search(r'(\d{3,})', parsed.fragment)
         return f"ID {m.group(1)}"
 
-    # 5. Segmentos del path de la URL (ej: /4312)
+    # 5. Segmentos del path de la URL
     path = parsed.path.strip('/')
     parts = path.split('/')
     for p in reversed(parts):
@@ -177,25 +177,36 @@ def extract_product_data(url):
         nomenclatura = f"{title_es} / {title_sk}"
 
         # -------------------------------------------------------------
-        # 4. IMPORTE UNITARIO (CON IVA EN EUROS - PRECIO ACTUALIZADO CON IVA)
+        # 4. IMPORTE UNITARIO (CON IVA EN EUROS)
         # -------------------------------------------------------------
         price_formatted = ""
 
-        # a) Meta tag explicit itemprop="price" / product:price:amount (Precio oficial con IVA de la tienda)
-        price_meta = soup.find('meta', attrs={'itemprop': 'price'}) or \
-                     soup.find('meta', property='product:price:amount') or \
-                     soup.find('meta', attrs={'name': 'price'}) or \
-                     soup.find('meta', property='og:price:amount')
-        
-        if price_meta and price_meta.get('content'):
+        # a) Buscar 'Cena s DPH' / 'Precio con IVA' (soporta €112,46 o 112,46 €)
+        price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE)
+        if price_match:
             try:
-                val = float(price_meta['content'].strip().replace(',', '.'))
+                val = float(price_match.group(1).strip().replace(" ", "").replace(',', '.'))
                 if val > 0:
                     price_formatted = f"{val:.2f}".replace('.', ',')
             except Exception:
                 pass
 
-        # b) JSON-LD (Schema.org)
+        # b) Meta tag explicit itemprop="price" / product:price:amount
+        if not price_formatted:
+            price_meta = soup.find('meta', attrs={'itemprop': 'price'}) or \
+                         soup.find('meta', property='product:price:amount') or \
+                         soup.find('meta', attrs={'name': 'price'}) or \
+                         soup.find('meta', property='og:price:amount')
+            
+            if price_meta and price_meta.get('content'):
+                try:
+                    val = float(price_meta['content'].strip().replace(',', '.'))
+                    if val > 0:
+                        price_formatted = f"{val:.2f}".replace('.', ',')
+                except Exception:
+                    pass
+
+        # c) JSON-LD (Schema.org)
         if not price_formatted:
             for s in soup.find_all('script', type='application/ld+json'):
                 if s.string:
@@ -215,22 +226,13 @@ def extract_product_data(url):
                     except Exception:
                         pass
 
-        # c) Buscar elementos de precio en HTML excluyendo elementos tachados (del, s, old-price)
+        # d) Buscar elementos de precio en HTML excluyendo elementos tachados
         if not price_formatted:
-            # Eliminar etiquetas de precios antiguos tachados de la sopa HTML
             for old in soup.find_all(['del', 's', 'strike'], class_=re.compile(r'old|original|crossed|strikethrough', re.I)):
                 old.decompose()
 
             found_prices = []
-            price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*([\d\s\.,]+)\s*(?:€|EUR)', html_text, re.IGNORECASE)
-            if price_match:
-                try:
-                    val = float(price_match.group(1).strip().replace(" ", "").replace(',', '.'))
-                    if val > 0: found_prices.append(val)
-                except Exception:
-                    pass
-
-            for p_match in re.finditer(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)\s*(?:s\s*DPH)?', html_text, re.IGNORECASE):
+            for p_match in re.finditer(r'€?\s*([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)?\s*(?:s\s*DPH)?', html_text, re.IGNORECASE):
                 try:
                     p_clean = p_match.group(1).replace('&nbsp;', '').replace(' ', '').replace(',', '.')
                     val = float(p_clean)
