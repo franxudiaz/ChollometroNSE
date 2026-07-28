@@ -209,6 +209,8 @@ def extract_product_data(url):
         # Verificar si la tienda exige registro previo para mostrar el precio (ej: Hagard HAL: "Cena sa zobrazí až po prihlásení")
         if re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
             price_formatted = "Necesario registro para ver precio"
+        elif "gufero" in domain_clean or "gufero.sk" in clean_url:
+            price_formatted = "Venta bajo catálogo (sin precios públicos)"
 
         # a) Elemento priceValue (ej: Autotechna <span class='priceValue'>78,24</span>)
         if not price_formatted:
