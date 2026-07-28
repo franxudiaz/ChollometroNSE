@@ -29,12 +29,19 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando kód: , Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando product-reference, kód: , Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: kód: , PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
+    # 1. Prioridad Absoluta HTML: PrestaShop product-reference, kód: , PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
+        # PrestaShop product-reference (ej: Truckershop <div class="product-reference"><label class="label">Kód </label><span>04729</span></div>)
+        m_ps_class = re.search(r'class=["\']product-reference["\'][^>]*>\s*<label[^>]*>[^<]*</label>\s*<span>([^<]+)</span>', html_text, re.IGNORECASE)
+        if m_ps_class:
+            val = m_ps_class.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 1:
+                return val
+
         # Copper.sk / E-Commerce kód: 60551001
         m_kod_simple = re.search(r'k[oó]d\s*:\s*([A-Z0-9\-_]{3,25})', html_text, re.IGNORECASE)
         if m_kod_simple:
@@ -47,7 +54,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
                    re.search(r'itemprop=["\'](?:gtin13|sku)["\']\s+content=["\']([^"\']+)["\']', html_text)
         if m_ps_ref:
             val = m_ps_ref.group(1).strip().upper()
-            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 2:
+            if val.lower() not in RESERVED_JS_WORDS and len(val) >= 1:
                 return val
 
         m_prod_code = re.search(r'(?:Código de producto|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+|K[oó]d|C[oó]digo)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{1,40})', html_text, re.IGNORECASE)
@@ -158,7 +165,7 @@ def extract_product_data(url):
 
         # Limpiar kód: 60551001 y marcas comerciales del título
         title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
