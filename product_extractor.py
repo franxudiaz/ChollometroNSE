@@ -25,16 +25,23 @@ HEADERS = {
     'Upgrade-Insecure-Requests': '1'
 }
 
-RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "nohavice", "klavesnica", "notebook", "edition", "sivy", "cierna"}
+RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "nohavice", "klavesnica", "notebook", "edition", "sivy", "cierna", "com"}
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando Kód, reference, Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando kód: , Kód produktu, Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 1. Prioridad Absoluta HTML: PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
+    # 1. Prioridad Absoluta HTML: kód: , PrestaShop "reference", Kód produktu, Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
+        # Copper.sk / E-Commerce kód: 60551001
+        m_kod_simple = re.search(r'k[oó]d\s*:\s*([A-Z0-9\-_]{3,25})', html_text, re.IGNORECASE)
+        if m_kod_simple:
+            val = m_kod_simple.group(1).strip().upper()
+            if val.lower() not in RESERVED_JS_WORDS:
+                return val
+
         # PrestaShop / VKP Steel: "reference":"11FRIUL05030" o itemprop="gtin13"
         m_ps_ref = re.search(r'"reference"\s*:\s*"([^"]+)"', html_text) or \
                    re.search(r'itemprop=["\'](?:gtin13|sku)["\']\s+content=["\']([^"\']+)["\']', html_text)
@@ -149,8 +156,9 @@ def extract_product_data(url):
             path_parts = parsed.path.strip('/').split('/')
             title_sk = path_parts[-1].replace('-', ' ').replace('.html', '').capitalize() if path_parts else "Producto"
 
-        # Limpiar marcas comerciales en el título
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        # Limpiar kód: 60551001 y marcas comerciales del título
+        title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
@@ -199,7 +207,7 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # b) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 0,06 € Con IVA / S DPH)
+        # b) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 14.60€ s DPH)
         if not price_formatted:
             price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE) or \
                           re.search(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*€\s*(?:s\s*DPH|Con\s*IVA)', html_text, re.IGNORECASE)
