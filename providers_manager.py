@@ -26,7 +26,7 @@ ECOMMERCE_PROVIDERS = [
     "smart computer", "xepap", "obi", "vercajch", "decathlon", "nay", 
     "autotechna", "outland", "stroje slovensko", "valtec", "hyriak", "vkp steel", 
     "copper", "hagard", "benu lekaren", "ikea", "jysk", "t-tech", 
-    "technikzv", "autopiko", "kapex", "scandi", "agharta", "army shop"
+    "technikzv", "autopiko", "kapex", "scandi", "agharta"
 ]
 
 def find_excel_file():
@@ -162,8 +162,6 @@ class ProvidersManager:
             return f"http://www.tonerservis.sk/?s={term_encoded}"
         elif "strojeslovensko.sk" in domain:
             return f"https://www.strojeslovensko.sk/search?search={term_encoded}&search_in_category="
-        elif "armyshopbb.webnode.sk" in domain or "armyshop" in domain:
-            return f"https://armyshopbb.webnode.sk/search/?text={term_encoded}&type=4"
         elif "outland.sk" in domain:
             return f"https://www.outland.sk/search?phrase={term_encoded}"
         elif "decathlon.sk" in domain:
