@@ -121,10 +121,10 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
         if m1 and m1.group(1).lower() not in RESERVED_JS_WORDS:
             return m1.group(1).upper()
             
-        m2 = re.search(r'-(\d{5,12})(?:-|\.html|#|$)', p) or re.search(r'/p/(\d{5,12})', clean_url) or re.search(r'(\d{4,12})', p)
+        m2 = re.search(r'/p/(\d{1,12})', clean_url) or re.search(r'-(\d{4,12})(?:-|\.html|#|$)', p) or re.search(r'(\d{4,12})', p)
         if m2:
             code = m2.group(1)
-            return f"ID {code}" if len(code) < 8 else code
+            return f"ID {code}"
 
     return f"REF-{codigo.upper()}"
 
