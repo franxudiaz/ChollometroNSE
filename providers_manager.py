@@ -25,7 +25,7 @@ KEY_KEYWORDS = ["llave", "llaves", "cilindro", "candado", "cerradura", "kľúč"
 ECOMMERCE_PROVIDERS = [
     "smart computer", "xepap", "obi", "vercajch", "decathlon", "nay", 
     "autotechna", "outland", "stroje slovensko", "valtec", "hyriak", "vkp steel", 
-    "copper", "hagard", "benu lekaren", "ikea", "jysk", "technopack", "t-tech", 
+    "copper", "hagard", "benu lekaren", "ikea", "jysk", "t-tech", 
     "technikzv", "autopiko", "kapex", "gatial", "scandi", "agharta", "army shop"
 ]
 
