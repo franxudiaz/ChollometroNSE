@@ -44,6 +44,15 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
             n = m_ikea_url.group(1)
             return f"{n[0:3]}.{n[3:6]}.{n[6:8]}"
 
+    # 0b. Prioridad Específica Decathlon: ID 9004900, ID 8734341
+    if "decathlon" in clean_url or "decathlon" in codigo:
+        if html_text:
+            m_dec_ref = re.search(r'data-testid=["\']product-reference["\'][^>]*>\s*(\d{6,8})\s*<', html_text) or \
+                        re.search(r'"modelId"\s*:\s*"(\d{6,8})"', html_text) or \
+                        re.search(r'data-reference=?(\d{6,8})', html_text)
+            if m_dec_ref:
+                return f"ID {m_dec_ref.group(1)}"
+
     # 0b. Prioridad URL Directa Hybris / OBI / Hansa-Flex: /p/CODE (ej: /p/4866760, /p/2004083, /p/HKEPMS160C)
     m_p_path = re.search(r'/p/([A-Z0-9\-_]{3,30})(?:\?|#|$)', clean_url, re.IGNORECASE)
     if m_p_path:
