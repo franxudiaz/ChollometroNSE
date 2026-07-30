@@ -257,10 +257,12 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # c) E-Commerce WooCommerce (ej: Vercajch) -> Contenedor p.price -> primer woocommerce-Price-amount
+        # c) E-Commerce WooCommerce (ej: Vercajch, Scandi) -> Contenedor p.price -> primer woocommerce-Price-amount activo
         if not price_formatted:
             price_p = soup.find('p', class_='price')
             if price_p:
+                for d in price_p.find_all(['del', 'small', 's', 'strike']):
+                    d.decompose()
                 for wo_tax in price_p.find_all(class_='content-product-price-wo-tax'):
                     wo_tax.decompose()
                 amt_span = price_p.find(class_='woocommerce-Price-amount')
