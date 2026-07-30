@@ -60,8 +60,16 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
         if val.lower() not in RESERVED_JS_WORDS:
             return val
 
-    # 1. Prioridad Absoluta HTML: JYSK SKU, Kód tovaru, Kód produktu, Interný kód, PrestaShop product-reference, kód: , PrestaShop "reference", Kód, Katalógové číslo, Obj.číslo, Objednávací kód
+    # 1. Prioridad Absoluta HTML: Outland variante hash, JYSK SKU, Kód tovaru, Kód produktu, Interný kód, PrestaShop product-reference, kód: , PrestaShop "reference", Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
+        # Outland variant option hash: #2026 -> AP7520006041SML
+        if "#" in clean_url:
+            opt_id = clean_url.split('#')[-1]
+            if opt_id.isdigit():
+                m_opt_code = re.search(r'"id"\s*:\s*"' + opt_id + r'"\s*,\s*"code"\s*:\s*"([^"]+)"', html_text)
+                if m_opt_code:
+                    return m_opt_code.group(1).strip().upper()
+
         # JYSK SKU: 6426073, 4912249
         m_jysk_sku = re.search(r'SKU:\s*(\d{7})', html_text, re.IGNORECASE) or re.search(r'"sku"\s*:\s*"(\d{7})"', html_text)
         if m_jysk_sku:
