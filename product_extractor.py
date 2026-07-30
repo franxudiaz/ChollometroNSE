@@ -29,11 +29,22 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando /p/CODE, Kód tovaru, Kód produktu, Interný kód, product-reference, kód: , Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando IKEA XXX.XXX.XX, /p/CODE, Kód tovaru, Kód produktu, Interný kód, product-reference, kód: , Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
-    # 0. Prioridad URL Directa Hybris / Hansa-Flex: /p/CODE (ej: /p/HKEPMS160C, /p/WB90NW10AOL)
+    # 0a. Prioridad Específica IKEA: Formato XXX.XXX.XX (ej: 603.127.15, 895.010.65, 404.887.96)
+    if "ikea" in clean_url or "ikea" in codigo:
+        if html_text:
+            m_ikea_txt = re.search(r'\b(\d{3}\.\d{3}\.\d{2})\b', html_text)
+            if m_ikea_txt:
+                return m_ikea_txt.group(1)
+        m_ikea_url = re.search(r'-s?(\d{8})(?:/|\?|#|$)', clean_url)
+        if m_ikea_url:
+            n = m_ikea_url.group(1)
+            return f"{n[0:3]}.{n[3:6]}.{n[6:8]}"
+
+    # 0b. Prioridad URL Directa Hybris / Hansa-Flex: /p/CODE (ej: /p/HKEPMS160C, /p/WB90NW10AOL)
     m_p_path = re.search(r'/p/([A-Z0-9\-_]{3,30})(?:\?|#|$)', clean_url, re.IGNORECASE)
     if m_p_path:
         val = m_p_path.group(1).strip().upper()
@@ -173,7 +184,7 @@ def extract_product_data(url):
         try:
             h1 = soup.find('h1')
             if h1:
-                title_sk = h1.get_text(strip=True)
+                title_sk = h1.get_text(separator=' ', strip=True)
             else:
                 og_title = soup.find('meta', property='og:title')
                 if og_title and og_title.get('content'):
@@ -191,7 +202,7 @@ def extract_product_data(url):
 
         # Limpiar kód: 60551001 y marcas comerciales del título
         title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO|XEPAP).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO|XEPAP|IKEA).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
