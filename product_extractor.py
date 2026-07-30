@@ -29,7 +29,7 @@ RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesh
 
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
-    Extrae la referencia/SKU exacta del fabricante (priorizando IKEA XXX.XXX.XX, /p/CODE, Kód tovaru, Kód produktu, Interný kód, product-reference, kód: , Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
+    Extrae la referencia/SKU exacta del fabricante (priorizando IKEA XXX.XXX.XX, OBI /p/CODE, Kód tovaru, Kód produktu, Interný kód, product-reference, kód: , Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
     """
     parsed = urlparse(clean_url)
     
@@ -44,22 +44,22 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
             n = m_ikea_url.group(1)
             return f"{n[0:3]}.{n[3:6]}.{n[6:8]}"
 
-    # 0b. Prioridad URL Directa Hybris / Hansa-Flex: /p/CODE (ej: /p/HKEPMS160C, /p/WB90NW10AOL)
+    # 0b. Prioridad URL Directa Hybris / OBI / Hansa-Flex: /p/CODE (ej: /p/4866760, /p/2004083, /p/HKEPMS160C)
     m_p_path = re.search(r'/p/([A-Z0-9\-_]{3,30})(?:\?|#|$)', clean_url, re.IGNORECASE)
     if m_p_path:
         val = m_p_path.group(1).strip().upper()
         if val.lower() not in RESERVED_JS_WORDS:
             return val
 
-    # 1. Prioridad Absoluta HTML: Kód tovaru, Kód produktu, Interný kód, PrestaShop product-reference, kód: , PrestaShop "reference", Kód, Katalógové číslo, Obj.číslo, Objednávací kód
+    # 1. Prioridad Absoluta HTML: JYSK SKU, Kód tovaru, Kód produktu, Interný kód, PrestaShop product-reference, kód: , PrestaShop "reference", Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
         # JYSK SKU: 6426073, 4912249
         m_jysk_sku = re.search(r'SKU:\s*(\d{7})', html_text, re.IGNORECASE) or re.search(r'"sku"\s*:\s*"(\d{7})"', html_text)
         if m_jysk_sku:
             return m_jysk_sku.group(1)
 
-        # Xepap / E-Commerce Kód tovaru / Kód produktu / Kód výrobcu: 511.2070.00, N01.0019.00, OP.CE1800L
-        m_tovaru_code = re.search(r'(?:Código de producto|Kód tovaru|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{1,40})', html_text, re.IGNORECASE)
+        # Xepap / OBI / E-Commerce Kód tovaru / Kód produktu / Kód výrobcu / Číslo výrobku: 511.2070.00, 4866760
+        m_tovaru_code = re.search(r'(?:Número de producto|Číslo výrobku|Código de producto|Kód tovaru|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{1,40})', html_text, re.IGNORECASE)
         if m_tovaru_code:
             val = m_tovaru_code.group(1).strip().upper()
             if val.lower() not in RESERVED_JS_WORDS and len(val) >= 1:
@@ -252,7 +252,21 @@ def extract_product_data(url):
         elif any(k in domain_clean or k in clean_url for k in ["gufero", "stavebninydado", "hansa-flex", "tonerservis", "technopack", "faxacopy", "gatial"]):
             price_formatted = "Venta bajo catálogo (sin precios públicos)"
 
-        # a) Buscar contenedor .price específico que contenga "s DPH" (ej: Xepap <p class="price">66,43 € s DPH</p>)
+        # a) Regla Específica OBI (ej: 24,99 EUR*, 4,29 EUR*, 299,99 EUR*)
+        if not price_formatted and ("obi" in domain_clean or "obi" in clean_url or "obi" in codigo):
+            soup_obi = BeautifulSoup(html_text, 'html.parser')
+            for tag in soup_obi.find_all(['script', 'style', 'del', 's', 'strike']):
+                tag.decompose()
+            for p_match in re.finditer(r'([\d\s]+[\.,]\d{2})\s*EUR\*', soup_obi.get_text()):
+                try:
+                    val = float(p_match.group(1).replace('&nbsp;', '').replace(' ', '').replace(',', '.'))
+                    if 0.01 <= val <= 50000:
+                        price_formatted = f"{val:.2f}".replace('.', ',')
+                        break
+                except Exception:
+                    pass
+
+        # b) Buscar contenedor .price específico que contenga "s DPH" (ej: Xepap <p class="price">66,43 € s DPH</p>)
         if not price_formatted:
             for p_el in soup.find_all(['p', 'div', 'span'], class_='price'):
                 if 's dph' in p_el.get_text().lower() or 'con iva' in p_el.get_text().lower():
@@ -266,7 +280,7 @@ def extract_product_data(url):
                         except Exception:
                             pass
 
-        # b) Elemento priceValue (ej: Autotechna <span class='priceValue'>78,24</span>)
+        # c) Elemento priceValue (ej: Autotechna <span class='priceValue'>78,24</span>)
         if not price_formatted:
             pv = soup.find(class_='priceValue')
             if pv:
@@ -278,7 +292,7 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # c) E-Commerce WooCommerce (ej: Vercajch, Scandi) -> Contenedor p.price -> primer woocommerce-Price-amount activo
+        # d) E-Commerce WooCommerce (ej: Vercajch, Scandi) -> Contenedor p.price -> primer woocommerce-Price-amount activo
         if not price_formatted:
             price_p = soup.find('p', class_='price')
             if price_p:
@@ -296,7 +310,7 @@ def extract_product_data(url):
                     except Exception:
                         pass
 
-        # d) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 14.60€ s DPH)
+        # e) Buscar 'Cena s DPH' / 'Precio con IVA' / 's DPH' / 'Con IVA' (soporta €38,28 o 14.60€ s DPH)
         if not price_formatted:
             price_match = re.search(r'(?:Cena\s*s\s*DPH|Precio\s*con\s*IVA)\s*:?\s*(?:<[^>]+>\s*)*€?\s*([\d\s\.,]+)\s*(?:€|EUR)?', html_text, re.IGNORECASE) or \
                           re.search(r'([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*€\s*(?:s\s*DPH|Con\s*IVA)', html_text, re.IGNORECASE)
@@ -309,7 +323,7 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # e) Meta tag explicit itemprop="price" / product:price:amount
+        # f) Meta tag explicit itemprop="price" / product:price:amount
         if not price_formatted:
             price_meta = soup.find('meta', attrs={'itemprop': 'price'}) or \
                          soup.find('meta', property='product:price:amount') or \
@@ -324,7 +338,7 @@ def extract_product_data(url):
                 except Exception:
                     pass
 
-        # f) JSON-LD (Schema.org)
+        # g) JSON-LD (Schema.org)
         if not price_formatted:
             for s in soup.find_all('script', type='application/ld+json'):
                 if s.string:
@@ -344,7 +358,7 @@ def extract_product_data(url):
                     except Exception:
                         pass
 
-        # g) Buscar elementos de precio en HTML excluyendo elementos tachados
+        # h) Buscar elementos de precio en HTML excluyendo elementos tachados
         if not price_formatted:
             for old in soup.find_all(['del', 's', 'strike'], class_=re.compile(r'old|original|crossed|strikethrough', re.I)):
                 old.decompose()
