@@ -53,6 +53,11 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
 
     # 1. Prioridad Absoluta HTML: Kód tovaru, Kód produktu, Interný kód, PrestaShop product-reference, kód: , PrestaShop "reference", Kód, Katalógové číslo, Obj.číslo, Objednávací kód
     if html_text:
+        # JYSK SKU: 6426073, 4912249
+        m_jysk_sku = re.search(r'SKU:\s*(\d{7})', html_text, re.IGNORECASE) or re.search(r'"sku"\s*:\s*"(\d{7})"', html_text)
+        if m_jysk_sku:
+            return m_jysk_sku.group(1)
+
         # Xepap / E-Commerce Kód tovaru / Kód produktu / Kód výrobcu: 511.2070.00, N01.0019.00, OP.CE1800L
         m_tovaru_code = re.search(r'(?:Código de producto|Kód tovaru|Kód produktu|Kód výrobcu|Číslo produktu|Katal[oó]gov[eé]\s*č[íi]slo|Katal[oó]gov[eé]\s*č\.?|Obj\.?\s*č[íi]slo|Objedn[^\s]*\s*(?:k[oó]d|č[íi]slo|č\.?)|C[oó]digo de pedido|K[oó]d objedn[^\s]+)\s*:?\s*(?:<[^>]+>\s*)*([A-Z0-9\s\._,\-]{1,40})', html_text, re.IGNORECASE)
         if m_tovaru_code:
@@ -202,7 +207,12 @@ def extract_product_data(url):
 
         # Limpiar kód: 60551001 y marcas comerciales del título
         title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO|XEPAP|IKEA).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO|XEPAP|IKEA|JYSK).*$', '', title_sk, flags=re.IGNORECASE).strip()
+
+        # Limpiar marca duplicada al inicio (ej: "VALTER Fotorámik VALTER...", "ALKEKONGE Stojan ALKEKONGE...")
+        parts_t = title_sk.split(maxsplit=1)
+        if len(parts_t) > 1 and parts_t[0].isupper() and len(parts_t[0]) >= 3 and parts_t[0] in parts_t[1]:
+            title_sk = parts_t[1]
 
         # -------------------------------------------------------------
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
