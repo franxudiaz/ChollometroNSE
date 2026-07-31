@@ -64,6 +64,12 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
             n = m_ikea_url.group(1)
             return f"{n[0:3]}.{n[3:6]}.{n[6:8]}"
 
+    # 0a2. Prioridad Específica METRO Eslovaquia: BTY-X483155 -> 483155
+    if "metro" in clean_url or "metro" in codigo:
+        m_metro_sku = re.search(r'BTY-X(\d+)', clean_url, re.IGNORECASE)
+        if m_metro_sku:
+            return m_metro_sku.group(1)
+
     # 0b. Prioridad Específica Decathlon: ID 9004900, ID 8734341
     if "decathlon" in clean_url or "decathlon" in codigo:
         if html_text:
@@ -191,7 +197,7 @@ def extract_product_data(url):
     Motor avanzado para extraer Código, Referencia, Nomenclatura (ES/SK) e Importe (con IVA)
     de cualquier e-commerce en Eslovaquia.
     """
-    clean_url = (url or '').strip()
+    clean_url = unquote((url or '').strip())
     if not clean_url:
         return {"error": "La URL ingresada está vacía."}
 
@@ -211,6 +217,8 @@ def extract_product_data(url):
         codigo = "hansa-flex"
     elif "dk-ramovanie" in domain_clean:
         codigo = "dk-ramovanie"
+    elif "metro" in domain_clean:
+        codigo = "metro"
     else:
         codigo = domain_clean.split('.')[0].lower() or "tienda"
 
@@ -304,8 +312,8 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         price_formatted = ""
 
-        # Verificar si la tienda exige registro previo (ej: Hagard HAL, Stavivo IBV: "Cena po prihlásení")
-        if re.search(r'po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE) or re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
+        # Verificar si la tienda exige registro previo (ej: METRO, Hagard HAL, Stavivo IBV: "Cena po prihlásení")
+        if "metro" in domain_clean or "metro" in clean_url or "metro" in codigo or re.search(r'po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE) or re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
             price_formatted = "Necesario registro para ver precio"
         elif any(k in domain_clean or k in clean_url for k in ["gufero", "stavebninydado", "hansa-flex", "tonerservis", "technopack", "faxacopy", "gatial"]):
             price_formatted = "Servicio / Lista de Precios / Contacto"
@@ -487,14 +495,20 @@ def generate_fallback_result(url, codigo, default_title):
     """
     Extractor inteligente desde la estructura de la URL si la web bloquea peticiones de servidor.
     """
-    parsed = urlparse(url)
-    slug = unquote(parsed.path.strip('/').split('/')[-1]).replace('.html', '')
+    clean_url = unquote(url or '')
+    parsed = urlparse(clean_url)
+    slug = parsed.path.strip('/').split('/')[-1].replace('.html', '')
 
-    referencia = extract_sku_from_text_or_url(url, "", codigo, "")
-    if referencia and "REF-" not in referencia:
+    referencia = extract_sku_from_text_or_url(clean_url, "", codigo, "")
+    is_fallback_ref = False
+    if not referencia or referencia.startswith("REF-"):
+        referencia = extract_product_type_fallback(slug.replace('-', ' '))
+        is_fallback_ref = True
+
+    if referencia and not is_fallback_ref and referencia in slug:
         slug = slug.replace(referencia.replace("ID ", ""), "").strip('-')
 
-    title_sk = slug.replace('-', ' ').strip().capitalize()
+    title_sk = slug.replace('-', ' ').strip()
     if not title_sk or len(title_sk) < 3:
         title_sk = default_title
 
@@ -506,10 +520,14 @@ def generate_fallback_result(url, codigo, default_title):
     except Exception:
         pass
 
+    fallback_price = "Servicio / Lista de Precios / Contacto"
+    if "metro" in clean_url or "metro" in codigo:
+        fallback_price = "Necesario registro para ver precio"
+
     formatted_text = f"""Codigo:  {codigo}
 Referencia: {referencia}
 Nomenclatura: {title_es} / {title_sk}
-Importe unitario (con iva): Servicio / Lista de Precios / Contacto"""
+Importe unitario (con iva): {fallback_price}"""
 
     return {
         "codigo": codigo,
@@ -517,7 +535,7 @@ Importe unitario (con iva): Servicio / Lista de Precios / Contacto"""
         "nomenclatura": f"{title_es} / {title_sk}",
         "title_es": title_es,
         "title_sk": title_sk,
-        "importe_unitario": "Servicio / Lista de Precios / Contacto",
+        "importe_unitario": fallback_price,
         "formatted_text": formatted_text,
-        "url": url
+        "url": clean_url
     }
