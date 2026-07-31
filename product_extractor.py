@@ -27,6 +27,26 @@ HEADERS = {
 
 RESERVED_JS_WORDS = {"fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm", "null", "undefined", "true", "false", "produkt", "produktu", "tovaru", "nohavice", "klavesnica", "notebook", "edition", "sivy", "cierna", "com"}
 
+def extract_product_type_fallback(title_sk):
+    """
+    Si un producto no tiene referencia/SKU explícito del fabricante,
+    extrae el tipo de producto o sustantivo principal en eslovaco desde el título
+    (ej: "Blok Artistico..." -> "Blok", "Akrylová fixa Liquitex" -> "Akrylová fixa", "Obuv..." -> "Obuv").
+    """
+    if not title_sk or title_sk.lower() in ["producto", "product", "náhradný diel"]:
+        return "Produkt"
+        
+    clean_title = re.sub(r'^[^\w\s]+', '', title_sk).strip()
+    words = clean_title.split()
+    if not words:
+        return "Produkt"
+
+    first_w = words[0].capitalize()
+    if len(words) >= 2 and (first_w.endswith(('á', 'é', 'ý', 'í', 'ové', 'ová', 'ný', 'ná', 'né')) or len(first_w) <= 3):
+        return f"{words[0].capitalize()} {words[1].lower()}".capitalize()
+    
+    return first_w
+
 def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
     """
     Extrae la referencia/SKU exacta del fabricante (priorizando IKEA XXX.XXX.XX, OBI /p/CODE, Kód tovaru, Kód produktu, Interný kód, product-reference, kód: , Katalógové číslo, Obj.číslo, Objednávací kód, Código de pedido, item_id, codes).
@@ -159,7 +179,7 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
             code = m2.group(1)
             return f"ID {code}"
 
-    return f"REF-{codigo.upper()}"
+    return None
 
 def extract_product_data(url):
     """
@@ -184,6 +204,8 @@ def extract_product_data(url):
         codigo = "stavivo"
     elif "hansa-flex" in domain_clean:
         codigo = "hansa-flex"
+    elif "dk-ramovanie" in domain_clean:
+        codigo = "dk-ramovanie"
     else:
         codigo = domain_clean.split('.')[0].lower() or "tienda"
 
@@ -205,7 +227,7 @@ def extract_product_data(url):
         title_sk = ""
         try:
             h1 = soup.find('h1')
-            if h1:
+            if h1 and len(h1.get_text(separator=' ', strip=True)) > 2:
                 title_sk = h1.get_text(separator=' ', strip=True)
             else:
                 og_title = soup.find('meta', property='og:title')
@@ -224,7 +246,7 @@ def extract_product_data(url):
 
         # Limpiar kód: 60551001 y marcas comerciales del título
         title_sk = re.sub(r'k[oó]d\s*:?\s*[A-Z0-9]+', '', title_sk, flags=re.IGNORECASE).strip()
-        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO|XEPAP|IKEA|JYSK).*$', '', title_sk, flags=re.IGNORECASE).strip()
+        title_sk = re.sub(r'\s*([\|:-]|::)\s*(Decathlon|NAY|OBI|VERCAJCH|AUTOTECHNA|Smart|Stroje|Valtec|Outland|Creative|Agharta|Hyriak|VKP STEEL|COPPER|HAGARD|TRUCKERSHOP|HANSA-FLEX|STAVIVO IBV|STAVIVO|XEPAP|IKEA|JYSK|DK-Rámovanie|DK Rámovanie|DKRAMOVANIE).*$', '', title_sk, flags=re.IGNORECASE).strip()
 
         # Limpiar marca duplicada al inicio (ej: "VALTER Fotorámik VALTER...", "ALKEKONGE Stojan ALKEKONGE...")
         parts_t = title_sk.split(maxsplit=1)
@@ -235,9 +257,13 @@ def extract_product_data(url):
         # 2. REFERENCIA / SKU / CÓDIGO DE FABRICANTE O PEDIDO
         # -------------------------------------------------------------
         referencia = extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk)
+        is_fallback_ref = False
+        if not referencia or referencia.startswith("REF-"):
+            referencia = extract_product_type_fallback(title_sk)
+            is_fallback_ref = True
 
-        # Si la referencia está dentro del título, limpiarla para no duplicarla
-        if referencia and referencia in title_sk:
+        # Si la referencia es un código explícito y está dentro del título, limpiarla para no duplicarla
+        if referencia and not is_fallback_ref and referencia in title_sk:
             title_sk = title_sk.replace(f"({referencia})", "").replace(f"/{referencia}/", "").replace(referencia, '').strip(' -()/:')
 
         title_sk = re.sub(r'/[0-9A-Z\-_]+/?$', '', title_sk, flags=re.IGNORECASE).strip(' -()/:')
@@ -261,6 +287,9 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         # 4. IMPORTE UNITARIO (CON IVA EN EUROS)
         # -------------------------------------------------------------
+        # -------------------------------------------------------------
+        # 4. IMPORTE UNITARIO (CON IVA EN EUROS)
+        # -------------------------------------------------------------
         price_formatted = ""
 
         # Verificar si la tienda exige registro previo (ej: Hagard HAL, Stavivo IBV: "Cena po prihlásení")
@@ -268,6 +297,19 @@ def extract_product_data(url):
             price_formatted = "Necesario registro para ver precio"
         elif any(k in domain_clean or k in clean_url for k in ["gufero", "stavebninydado", "hansa-flex", "tonerservis", "technopack", "faxacopy", "gatial"]):
             price_formatted = "Venta bajo catálogo (sin precios públicos)"
+
+        # a) Opción seleccionada en desplegable (ej: DK Rámovanie 28,70 EUR / 3,40 EUR)
+        if not price_formatted:
+            opt_sel = soup.find('option', selected=True) or soup.find('option')
+            if opt_sel:
+                m_p_opt = re.search(r'([\d\s]+[\.,]\d{2})\s*(?:EUR|€)', opt_sel.get_text())
+                if m_p_opt:
+                    try:
+                        val = float(m_p_opt.group(1).replace('&nbsp;', '').replace(' ', '').replace(',', '.'))
+                        if val > 0:
+                            price_formatted = f"{val:.2f}".replace('.', ',')
+                    except Exception:
+                        pass
 
         # a) Regla Específica OBI (ej: 24,99 EUR*, 4,29 EUR*, 299,99 EUR*)
         if not price_formatted and ("obi" in domain_clean or "obi" in clean_url or "obi" in codigo):

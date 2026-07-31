@@ -26,7 +26,7 @@ ECOMMERCE_PROVIDERS = [
     "smart computer", "xepap", "obi", "vercajch", "decathlon", "nay", 
     "autotechna", "outland", "stroje slovensko", "valtec", "hyriak", "vkp steel", 
     "copper", "hagard", "benu lekaren", "ikea", "jysk", "t-tech", 
-    "technikzv", "autopiko", "kapex", "scandi", "agharta"
+    "technikzv", "autopiko", "kapex", "scandi", "agharta", "dk ramovanie"
 ]
 
 def find_excel_file():
