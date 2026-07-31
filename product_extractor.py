@@ -90,6 +90,11 @@ def extract_sku_from_text_or_url(clean_url, html_text, codigo, title_sk=""):
                 if m_opt_code:
                     return m_opt_code.group(1).strip().upper()
 
+        # PROMO DESIGN SKU: P328.719, P463.813
+        m_promodes_sku = re.search(r'\b([A-Z]{1,3}\d{3}\.\d{3})\b', html_text)
+        if m_promodes_sku:
+            return m_promodes_sku.group(1)
+
         # JYSK SKU: 6426073, 4912249
         m_jysk_sku = re.search(r'SKU:\s*(\d{7})', html_text, re.IGNORECASE) or re.search(r'"sku"\s*:\s*"(\d{7})"', html_text)
         if m_jysk_sku:
@@ -226,17 +231,24 @@ def extract_product_data(url):
         # -------------------------------------------------------------
         title_sk = ""
         try:
-            h1 = soup.find('h1')
-            if h1 and len(h1.get_text(separator=' ', strip=True)) > 2:
-                title_sk = h1.get_text(separator=' ', strip=True)
-            else:
-                og_title = soup.find('meta', property='og:title')
-                if og_title and og_title.get('content'):
-                    title_sk = og_title['content'].strip()
+            if "promodes" in domain_clean or "e-present" in domain_clean:
+                h2_promodes = soup.find('h2')
+                if h2_promodes:
+                    title_sk = h2_promodes.get_text(separator=' ', strip=True)
+                    title_sk = re.sub(r',\s*(?:Brown|Black|White|Red|Blue|Green|Yellow|Orange|Grey|Silver|Gold).*$', '', title_sk, flags=re.IGNORECASE).strip()
+            
+            if not title_sk:
+                h1 = soup.find('h1')
+                if h1 and len(h1.get_text(separator=' ', strip=True)) > 2:
+                    title_sk = h1.get_text(separator=' ', strip=True)
                 else:
-                    title_tag = soup.find('title')
-                    if title_tag:
-                        title_sk = title_tag.get_text(strip=True)
+                    og_title = soup.find('meta', property='og:title')
+                    if og_title and og_title.get('content'):
+                        title_sk = og_title['content'].strip()
+                    else:
+                        title_tag = soup.find('title')
+                        if title_tag:
+                            title_sk = title_tag.get_text(strip=True)
         except Exception:
             pass
 
@@ -310,6 +322,17 @@ def extract_product_data(url):
                             price_formatted = f"{val:.2f}".replace('.', ',')
                     except Exception:
                         pass
+
+        # a) PROMO DESIGN Price sin IVA (ej: 19,67 (SIN IVA), 2,89 (SIN IVA))
+        if not price_formatted and ("promodes" in domain_clean or "e-present" in domain_clean or "promodes" in codigo):
+            for tr in soup.find_all('tr'):
+                txt_tr = tr.get_text(separator=' | ', strip=True)
+                if re.search(r'\b[A-Z]{1,3}\d{3}\.\d{3}\b', txt_tr):
+                    eur_matches = re.findall(r'([\d\s]+[\.,]\d{2})\s*EUR', txt_tr)
+                    if eur_matches:
+                        active_val = eur_matches[-1].replace(' ', '').replace('.', ',')
+                        price_formatted = f"{active_val} (SIN IVA)"
+                        break
 
         # a) Regla Específica OBI (ej: 24,99 EUR*, 4,29 EUR*, 299,99 EUR*)
         if not price_formatted and ("obi" in domain_clean or "obi" in clean_url or "obi" in codigo):
