@@ -228,13 +228,27 @@ def extract_product_data(url):
     try:
         session = requests.Session()
         session.headers.update(req_headers)
+        r = None
         try:
-            r = session.get(clean_url, timeout=10)
+            r = session.get(clean_url, timeout=8)
         except Exception:
-            r = session.get(clean_url, timeout=10, verify=False)
+            try:
+                r = session.get(clean_url, timeout=8, verify=False)
+            except Exception:
+                pass
 
-        if r.status_code != 200:
-            logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}")
+        if not r or r.status_code != 200 or len(r.text) < 10000:
+            logging.info(f"Petición directa falló ({r.status_code if r else 'Error'}). Intentando proxy de Google Translate para {clean_url}...")
+            try:
+                proxy_url = f"https://translate.google.com/translate?sl=sk&tl=es&u={clean_url}"
+                r_proxy = session.get(proxy_url, timeout=10)
+                if r_proxy.status_code == 200 and len(r_proxy.text) > 5000:
+                    r = r_proxy
+            except Exception as ex_p:
+                logging.warning(f"Fallback proxy Google Translate falló: {ex_p}")
+
+        if not r or r.status_code != 200:
+            logging.warning(f"Respuesta HTTP {r.status_code if r else 'Sin respuesta'} al acceder a {clean_url}")
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")
 
         html_text = r.text
