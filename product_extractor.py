@@ -226,7 +226,13 @@ def extract_product_data(url):
     req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
 
     try:
-        r = requests.get(clean_url, headers=req_headers, timeout=8, verify=False)
+        session = requests.Session()
+        session.headers.update(req_headers)
+        try:
+            r = session.get(clean_url, timeout=10)
+        except Exception:
+            r = session.get(clean_url, timeout=10, verify=False)
+
         if r.status_code != 200:
             logging.warning(f"Respuesta HTTP {r.status_code} al acceder a {clean_url}")
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")
