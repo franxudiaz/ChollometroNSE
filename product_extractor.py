@@ -296,7 +296,7 @@ def extract_product_data(url):
         if re.search(r'po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE) or re.search(r'zobraz[ií]\s*až\s*po\s*prihl[aá]sen[ií]', html_text, re.IGNORECASE):
             price_formatted = "Necesario registro para ver precio"
         elif any(k in domain_clean or k in clean_url for k in ["gufero", "stavebninydado", "hansa-flex", "tonerservis", "technopack", "faxacopy", "gatial"]):
-            price_formatted = "Venta bajo catálogo (sin precios públicos)"
+            price_formatted = "Servicio / Lista de Precios / Contacto"
 
         # a) Opción seleccionada en desplegable (ej: DK Rámovanie 28,70 EUR / 3,40 EUR)
         if not price_formatted:
@@ -437,7 +437,7 @@ def extract_product_data(url):
                 price_formatted = f"{max_price:.2f}".replace('.', ',')
 
         if not price_formatted:
-            price_formatted = "Consultar en tienda online (€)"
+            price_formatted = "Servicio / Lista de Precios / Contacto"
 
         # Formato final exacto solicitado por el usuario
         formatted_result = f"""Codigo:  {codigo}
@@ -486,7 +486,7 @@ def generate_fallback_result(url, codigo, default_title):
     formatted_text = f"""Codigo:  {codigo}
 Referencia: {referencia}
 Nomenclatura: {title_es} / {title_sk}
-Importe unitario (con iva): Consultar en tienda online (€)"""
+Importe unitario (con iva): Servicio / Lista de Precios / Contacto"""
 
     return {
         "codigo": codigo,
@@ -494,7 +494,7 @@ Importe unitario (con iva): Consultar en tienda online (€)"""
         "nomenclatura": f"{title_es} / {title_sk}",
         "title_es": title_es,
         "title_sk": title_sk,
-        "importe_unitario": "Consultar en tienda online (€)",
+        "importe_unitario": "Servicio / Lista de Precios / Contacto",
         "formatted_text": formatted_text,
         "url": url
     }
