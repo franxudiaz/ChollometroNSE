@@ -497,8 +497,15 @@ def generate_fallback_result(url, codigo, default_title):
     """
     clean_url = unquote(url or '')
     parsed = urlparse(clean_url)
-    slug = parsed.path.strip('/').split('/')[-1].replace('.html', '')
-
+    path_parts = [p for p in parsed.path.strip('/').split('/') if p and p.lower() not in ['p', 'product', 'detail', 'shop', 'pv', 'kategoria', 'sk', 'cz']]
+    
+    slug = ""
+    if path_parts:
+        if path_parts[-1].isdigit() and len(path_parts) > 1:
+            slug = path_parts[-2].replace('.html', '')
+        else:
+            slug = path_parts[-1].replace('.html', '')
+            
     referencia = extract_sku_from_text_or_url(clean_url, "", codigo, "")
     is_fallback_ref = False
     if not referencia or referencia.startswith("REF-"):
@@ -508,8 +515,8 @@ def generate_fallback_result(url, codigo, default_title):
     if referencia and not is_fallback_ref and referencia in slug:
         slug = slug.replace(referencia.replace("ID ", ""), "").strip('-')
 
-    title_sk = slug.replace('-', ' ').strip()
-    if not title_sk or len(title_sk) < 3:
+    title_sk = slug.replace('-', ' ').strip().capitalize()
+    if not title_sk or len(title_sk) < 3 or title_sk.isdigit():
         title_sk = default_title
 
     title_es = title_sk
