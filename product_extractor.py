@@ -14,22 +14,15 @@ HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'sk-SK,sk;q=0.9,es-ES;q=0.8,es;q=0.7,en-US;q=0.6,en;q=0.5',
     'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
-    'Sec-Ch-Ua': '"Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
-    'Sec-Ch-Ua-Mobile': '?0',
-    'Sec-Ch-Ua-Platform': '"Windows"',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'same-origin',
-    'Sec-Fetch-User': '?1',
-    'Upgrade-Insecure-Requests': '1'
+    'Pragma': 'no-cache'
 }
 
 RESERVED_WORDS = {
     "fetch", "method", "function", "script", "header", "stylesheet", "content", "gtm",
     "null", "undefined", "true", "false", "produkt", "produktu", "tovaru", "nohavice",
     "klavesnica", "notebook", "edition", "sivy", "cierna", "com", "sandisk", "logitech",
-    "makita", "bosch", "dewalt", "lenovo", "apple", "samsung", "asus", "acer"
+    "makita", "bosch", "dewalt", "lenovo", "apple", "samsung", "asus", "acer",
+    "ultra", "dual", "drive", "flash", "disk", "black", "white", "cierny", "biela"
 }
 
 def extract_sku_from_soup_or_text(soup, html_text, clean_url, title_sk=""):
@@ -79,14 +72,14 @@ def extract_sku_from_soup_or_text(soup, html_text, clean_url, title_sk=""):
                 m = re.search(r'(?:Kód[^\:]*|SKU|Ref|Číslo[^\:]*)\s*:?\s*([A-Z0-9\-_]{3,30})', full_txt, re.IGNORECASE)
                 if m:
                     candidate = m.group(1).strip().upper()
-                    if candidate.lower() not in RESERVED_WORDS and (not candidate.isdigit() or len(candidate) >= 4):
+                    if candidate.lower() not in RESERVED_WORDS and any(c.isdigit() for c in candidate):
                         return candidate
                 next_el = parent.find_next_sibling()
                 if next_el:
                     s_txt = next_el.get_text(strip=True).upper()
                     if s_txt and len(s_txt) >= 3 and s_txt.lower() not in RESERVED_WORDS:
                         m_sub = re.search(r'([A-Z0-9\-_]{3,30})', s_txt)
-                        if m_sub:
+                        if m_sub and any(c.isdigit() for c in m_sub.group(1)):
                             return m_sub.group(1).strip().upper()
 
     # 4. Regex directa sobre el HTML raw para Kód tovaru / PrestaShop / Shoptet item_id / code
@@ -110,15 +103,15 @@ def extract_sku_from_soup_or_text(soup, html_text, clean_url, title_sk=""):
             if val.lower() not in RESERVED_WORDS:
                 return val
 
-    # 6. SKU explícito dentro del slug o path de la URL (ej: "sandisk-...-sdddc3-064g-g46/")
-    m_partnum = re.search(r'([A-Z0-9]{2,6}-[A-Z0-9]{3,8}(?:-[A-Z0-9]{2,8})?)', clean_url, re.IGNORECASE) or \
-                re.search(r'([A-Z0-9]{2,6}-[A-Z0-9]{3,8}(?:-[A-Z0-9]{2,8})?)', title_sk, re.IGNORECASE)
-    if m_partnum:
-        val = m_partnum.group(1).strip().upper()
-        if val.lower() not in RESERVED_WORDS and any(c.isdigit() for c in val):
-            return val
+    # 6. SKU con números explícitos en la URL o Título (ej: SDDDC3-064G-G46, E-05701, 802.758.87)
+    for target_str in [clean_url, title_sk]:
+        candidates = re.findall(r'\b([A-Z0-9]{2,6}-[A-Z0-9]{3,8}(?:-[A-Z0-9]{2,8})?)\b', target_str, re.IGNORECASE)
+        for cand in candidates:
+            c_upper = cand.upper()
+            if c_upper.lower() not in RESERVED_WORDS and any(c.isdigit() for c in c_upper):
+                return c_upper
 
-    # Fallback: Tipo de producto o palabra principal si no hay SKU explícito
+    # Fallback: Sustantivo principal del título
     clean_title = re.sub(r'^[^\w\s]+', '', title_sk).strip()
     words = clean_title.split()
     if words:
@@ -202,7 +195,7 @@ def extract_price_from_soup_or_text(soup, html_text, clean_url, domain_clean):
     if found_prices:
         return f"{max(found_prices):.2f}".replace('.', ',')
 
-    # 4. Regex sobre texto completo buscando patron NNN,NN € s DPH o €NN,NN
+    # 4. Regex sobre texto completo buscando patrón NNN,NN € s DPH o €NN,NN
     raw_matches = re.findall(r'€?\s*([\d\s]+[\.,]\d{2})\s*(?:&nbsp;)?\s*(?:€|EUR)?\s*(?:s\s*DPH|Con\s*IVA)?', html_text, re.IGNORECASE)
     for p_str in raw_matches:
         try:
@@ -220,6 +213,44 @@ def extract_price_from_soup_or_text(soup, html_text, clean_url, domain_clean):
 
     return "Servicio / Lista de Precios / Contacto"
 
+def fetch_page_html(clean_url):
+    """
+    Obtiene el HTML completo de la URL de forma robusta.
+    Si la petición directa es bloqueada (ej: PythonAnywhere / Cloudflare / 403),
+    utiliza la pasarela proxy jina.ai (con X-Return-Format: html) para renderizar la página.
+    """
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    
+    # 1. Intento directo
+    try:
+        r = session.get(clean_url, timeout=8)
+        if r.status_code == 200 and len(r.text) > 3000:
+            return r.text
+    except Exception as e:
+        logging.warning(f"Petición directa falló para {clean_url}: {e}")
+
+    # 2. Intento vía Proxy de Renderizado (Jina Reader API) para evitar bloqueos por IP de centro de datos
+    try:
+        logging.info(f"Intentando pasarela proxy de renderizado para {clean_url}...")
+        jina_url = f"https://r.jina.ai/{clean_url}"
+        r_jina = session.get(jina_url, headers={'User-Agent': 'Mozilla/5.0', 'X-Return-Format': 'html'}, timeout=12)
+        if r_jina.status_code == 200 and len(r_jina.text) > 2000:
+            return r_jina.text
+    except Exception as ex_j:
+        logging.warning(f"Fallback proxy jina.ai falló: {ex_j}")
+
+    # 3. Intento secundario vía Google Translate Proxy
+    try:
+        proxy_url = f"https://translate.google.com/translate?sl=sk&tl=es&u={clean_url}"
+        r_proxy = session.get(proxy_url, timeout=10)
+        if r_proxy.status_code == 200 and len(r_proxy.text) > 2000:
+            return r_proxy.text
+    except Exception as ex_p:
+        logging.warning(f"Fallback proxy Google Translate falló: {ex_p}")
+
+    return ""
+
 def extract_product_data(url):
     """
     Motor universal avanzado para extraer Código, Referencia, Nomenclatura (ES/SK)
@@ -236,35 +267,12 @@ def extract_product_data(url):
     domain_clean = parsed.netloc.lower().replace("www.", "")
     codigo = domain_clean.split('.')[0].lower() or "tienda"
 
-    req_headers = HEADERS.copy()
-    req_headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
-
     try:
-        session = requests.Session()
-        session.headers.update(req_headers)
-        r = None
-        try:
-            r = session.get(clean_url, timeout=12)
-        except Exception:
-            try:
-                r = session.get(clean_url, timeout=12, verify=False)
-            except Exception:
-                pass
+        html_text = fetch_page_html(clean_url)
 
-        if not r or r.status_code != 200 or len(r.text) < 500:
-            logging.info(f"Petición directa falló ({r.status_code if r else 'Error'}). Intentando proxy Google Translate...")
-            try:
-                proxy_url = f"https://translate.google.com/translate?sl=sk&tl=es&u={clean_url}"
-                r_proxy = session.get(proxy_url, timeout=12)
-                if r_proxy.status_code == 200 and len(r_proxy.text) > 3000:
-                    r = r_proxy
-            except Exception as ex_p:
-                logging.warning(f"Fallback proxy Google Translate falló: {ex_p}")
-
-        if not r or r.status_code != 200:
+        if not html_text or len(html_text) < 500:
             return generate_fallback_result(clean_url, codigo, f"Producto en {codigo.capitalize()}")
 
-        html_text = r.text
         soup = BeautifulSoup(html_text, 'html.parser')
 
         # 1. TÍTULO EN ESLOVACO
@@ -339,8 +347,13 @@ def generate_fallback_result(url, codigo, default_title):
     
     slug = path_parts[-1].replace('.html', '') if path_parts else ""
 
-    m_partnum = re.search(r'([A-Z0-9]{2,6}-[A-Z0-9]{3,8}(?:-[A-Z0-9]{2,8})?)', clean_url, re.IGNORECASE)
-    referencia = m_partnum.group(1).upper() if m_partnum else "REF-" + codigo.upper()
+    # Buscar solo patrones con DÍGITOS explícitos para no tomar palabras como SKU
+    candidates = re.findall(r'\b([A-Z0-9]{2,6}-[A-Z0-9]{3,8}(?:-[A-Z0-9]{2,8})?)\b', clean_url, re.IGNORECASE)
+    referencia = "REF-" + codigo.upper()
+    for cand in candidates:
+        if any(c.isdigit() for c in cand) and cand.lower() not in RESERVED_WORDS:
+            referencia = cand.upper()
+            break
 
     title_sk = slug.replace('-', ' ').strip().capitalize() or default_title
     title_es = title_sk
